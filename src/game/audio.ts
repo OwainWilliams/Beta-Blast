@@ -35,10 +35,33 @@ function tone(freq: number, dur: number, type: OscillatorType = 'sine', vol = 0.
   osc.stop(t0 + dur);
 }
 
+function noise(dur: number, vol: number, cutoff: number): void {
+  if (!ctx || muted) return;
+  const len = Math.floor(ctx.sampleRate * dur);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = cutoff;
+  const gain = ctx.createGain();
+  gain.gain.value = vol;
+  src.connect(filter).connect(gain).connect(ctx.destination);
+  src.start();
+}
+
 export const sfx = {
-  shoot: () => tone(300, 0.1, 'triangle', 0.1, 600),
+  shoot: () => {
+    noise(0.22, 0.25, 1600); // the poof of chalk
+    tone(170, 0.1, 'sine', 0.1, 90);
+  },
   bounce: () => tone(500, 0.05, 'square', 0.04),
-  land: () => tone(160, 0.08, 'sine', 0.12, 100),
+  land: () => {
+    tone(160, 0.08, 'sine', 0.12, 100);
+    noise(0.07, 0.08, 900);
+  },
   pop: (n: number, combo = 1) => {
     const base = 420 * 2 ** (Math.min(combo - 1, 6) / 12);
     for (let i = 0; i < Math.min(n, 6); i++) tone(base + i * 90, 0.12, 'triangle', 0.1, undefined, i * 0.04);

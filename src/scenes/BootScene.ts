@@ -21,11 +21,15 @@ export class BootScene extends Phaser.Scene {
     this.makeVolume(true);
     this.makeSlick();
     this.makeWall();
-    this.makeBarrel();
     const g = this.add.graphics();
     g.fillStyle(0xffffff, 1).fillCircle(4, 4, 4);
     g.generateTexture('chalk', 8, 8);
     g.destroy();
+    // soft round puff: stacked translucent circles fake a radial gradient
+    const d = this.add.graphics();
+    for (let i = 0; i < 12; i++) d.fillStyle(0xffffff, 0.07).fillCircle(16, 16, 16 - i * 1.25);
+    d.generateTexture('dust', 32, 32);
+    d.destroy();
     // a shared link like ?route=CP1-... goes straight into that route
     const code = codeFromInput(window.location.search);
     const route = code ? decodeRoute(code) : null;
@@ -137,14 +141,6 @@ export class BootScene extends Phaser.Scene {
     g.lineStyle(2, 0x2c3250, 1);
     for (let x = 0; x <= WIDTH; x += 90) g.lineBetween(x, 606, x, HEIGHT);
     g.generateTexture('wall', WIDTH, HEIGHT);
-    g.destroy();
-  }
-
-  private makeBarrel(): void {
-    const g = this.add.graphics();
-    g.fillStyle(0x59627f).fillRoundedRect(0, 0, 22, 58, 6);
-    g.fillStyle(0x8a94b8).fillRoundedRect(3, 2, 6, 54, 3);
-    g.generateTexture('barrel', 22, 58);
     g.destroy();
   }
 }
