@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { GRID_X, WIDTH } from '../config';
 import { D, Grid, Hold, isColour, makeHold, R, H, SLICK, VOLUME } from '../game/grid';
-import { codeFromInput, decodeRoute, emptyLayout, encodeRoute, MAX_EDIT_ROWS, MAX_PUMP, MIN_PUMP, Route, routeLevel } from '../game/routes';
+import { codeFromInput, decodeRoute, emptyLayout, encodeRoute, MAX_EDIT_ROWS, MAX_PUMP, MIN_PUMP, Route, routeLevel, TIMER_NAMES } from '../game/routes';
 import { unlockAudio } from '../game/audio';
 import { makeButton, textureFor, txt } from '../ui';
 
@@ -16,6 +16,8 @@ export class EditorScene extends Phaser.Scene {
   private pump = 6;
   private bombs = true;
   private wilds = true;
+  private timer = 0;
+  private timerBtn!: Phaser.GameObjects.Container;
   private selection!: Phaser.GameObjects.Rectangle;
   private info!: Phaser.GameObjects.Text;
   private status!: Phaser.GameObjects.Text;
@@ -39,6 +41,7 @@ export class EditorScene extends Phaser.Scene {
     this.pump = 6;
     this.bombs = true;
     this.wilds = true;
+    this.timer = 0;
     for (let r = 0; r < MAX_EDIT_ROWS; r++) this.grid.ensureRow(r);
 
     this.add.image(0, 0, 'wall').setOrigin(0);
@@ -76,6 +79,8 @@ export class EditorScene extends Phaser.Scene {
     makeButton(this, 270, 624, 150, 46, 'Copy link', () => void this.copyLink(), 0x2f6fdd);
     makeButton(this, 435, 624, 150, 46, 'Load code', () => this.loadPrompt(), 0x2f6fdd);
     makeButton(this, 105, 674, 150, 38, 'Clear', () => this.clear(), 0x8a3b3b, 16);
+    this.timerBtn = makeButton(this, 270, 674, 150, 38, '', () => this.cycleTimer(), 0x59627f, 15);
+    this.cycleTimer(true);
     makeButton(this, 435, 674, 150, 38, 'Back', () => this.scene.start('Menu'), 0x59627f, 16);
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
@@ -116,6 +121,12 @@ export class EditorScene extends Phaser.Scene {
   private toggleBombs(init = false): void {
     if (!init) this.bombs = !this.bombs;
     (this.bombBtn.list[1] as Phaser.GameObjects.Text).setText(`Bombs: ${this.bombs ? 'on' : 'off'}`);
+  }
+
+  /** Row timer setting: off, slow, normal, fast. */
+  private cycleTimer(init = false): void {
+    if (!init) this.timer = (this.timer + 1) % TIMER_NAMES.length;
+    (this.timerBtn.list[1] as Phaser.GameObjects.Text).setText(`Row timer: ${TIMER_NAMES[this.timer]}`);
   }
 
   private toggleWilds(init = false): void {
@@ -173,7 +184,7 @@ export class EditorScene extends Phaser.Scene {
   private toRoute(): Route {
     const layout = emptyLayout();
     for (const [r, c] of this.grid.cells()) layout[r][c] = this.grid.get(r, c)!.type;
-    return { layout, shotsPerDrop: this.pump, bombs: this.bombs, wilds: this.wilds };
+    return { layout, shotsPerDrop: this.pump, bombs: this.bombs, wilds: this.wilds, timer: this.timer };
   }
 
   /** The route as a code, or null (with a message) if it can't be played. */
@@ -233,6 +244,8 @@ export class EditorScene extends Phaser.Scene {
     this.setPump(route.shotsPerDrop);
     this.bombs = route.bombs;
     this.wilds = route.wilds;
+    this.timer = route.timer;
+    this.cycleTimer(true);
     this.toggleBombs(true);
     this.toggleWilds(true);
     this.refreshInfo();

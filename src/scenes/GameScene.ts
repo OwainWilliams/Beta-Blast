@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
-import { GRID_X, HEIGHT, HOLD_COLOURS, LAUNCH_X, LAUNCH_Y, LOSE_Y, WIDTH } from '../config';
+import { GRID_X, HEIGHT, HOLD_COLOURS, LAUNCH_X, LAUNCH_Y, LOSE_ROW, LOSE_Y, WIDTH } from '../config';
 import { Engine, Flight, MAX_AIM, Removed, SPEED, ShotResult } from '../game/engine';
 import { BOMB, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
-import { gradeLevel, LevelSpec, MAX_GRADE } from '../game/levels';
+import { gradeLevel, LevelSpec } from '../game/levels';
+import { pauseMusic, resumeMusic, setIntensity, startMusic, stopMusic, toggleMusic } from '../game/music';
 import { isMutedNow, sfx, toggleMute, unlockAudio } from '../game/audio';
-import { getBest, getShake, hintSeen, markHint, recordResult, setShake } from '../game/storage';
+import { getBest, getMusic, getShake, hintSeen, markHint, recordResult, setShake } from '../game/storage';
 import { ChalkBag, chalkPuff } from '../chalkBag';
 import { makeButton, makeClimber, textureFor, txt } from '../ui';
 
@@ -12,6 +13,9 @@ const TRACK_X = 15;
 const TRACK_TOP = 40;
 const TRACK_BOTTOM = 520;
 const HINT_MS = 4200;
+const GAUGE_X = 525;
+const GAUGE_TOP = 60;
+const GAUGE_BOTTOM = 520;
 
 type State = 'aiming' | 'flying' | 'resolving' | 'over';
 
@@ -50,6 +54,9 @@ export class GameScene extends Phaser.Scene {
   private trackClimber!: Phaser.GameObjects.Container;
   private baseClimber!: Phaser.GameObjects.Container;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+
+  private gaugeFill: Phaser.GameObjects.Rectangle | null = null;
+  private lastTickSec = -1;
 
   private hintQueue: { id: string; text: string }[] = [];
   private hintShowing = false;
@@ -92,13 +99,19 @@ export class GameScene extends Phaser.Scene {
     this.updateProgress(false);
 
     this.hint('aim', 'Aim with the mouse or your finger, then release to shoot');
+    if (this.gaugeFill) this.hint('timer', 'The gauge on the right fills with time. When it is full, the wall drops a row');
     this.refreshQueue(); // queues the bomb / mega jug tips if one is already loaded
     const kinds = new Set(this.engine.grid.cells().map(([r, c]) => this.engine.grid.get(r, c)!.type));
     if (kinds.has(VOLUME)) this.hint('volume', 'Grey volumes crack when you pop holds next to them. Two pops breaks one');
     if (kinds.has(SLICK)) this.hint('slick', 'Teal slick holds are greasy: shots that land beside one slide down');
 
+    this.lastTickSec = -1;
+    startMusic(this.level.grade);
     // Key objects outlive the scene, so drop our listeners on shutdown.
-    this.events.once('shutdown', () => Object.values(this.keys).forEach((k) => k.removeAllListeners()));
+    this.events.once('shutdown', () => {
+      Object.values(this.keys).forEach((k) => k.removeAllListeners());
+      stopMusic(0);
+    });
   }
 
   // ---------- setup ----------
@@ -123,6 +136,14 @@ export class GameScene extends Phaser.Scene {
     this.muteText.on('pointerup', () => this.muteText.setText(toggleMute() ? '🔇' : '🔊'));
     this.pumpLabel = txt(this, LAUNCH_X, 708, 'PUMP', 11, '#9aa6cf');
     this.pips = this.add.graphics();
+
+    // Row timer: a gauge down the right edge that fills as the next row of holds gets closer.
+    this.gaugeFill = null;
+    if ((this.level.dropInterval ?? 0) > 0) {
+      this.add.rectangle(GAUGE_X, (GAUGE_TOP + GAUGE_BOTTOM) / 2, 8, GAUGE_BOTTOM - GAUGE_TOP + 2, 0x1a1f2c).setStrokeStyle(1, 0x55608a);
+      this.gaugeFill = this.add.rectangle(GAUGE_X, GAUGE_TOP, 6, 0, 0x55608a).setOrigin(0.5, 0);
+      txt(this, GAUGE_X, GAUGE_BOTTOM + 14, 'ROW', 9, '#9aa6cf');
+    }
 
     const pause = this.add.rectangle(WIDTH - 15, 22, 24, 30, 0x000000, 0.35).setInteractive({ useHandCursor: true });
     txt(this, WIDTH - 15, 22, '❚❚', 10, '#c9d1ee');
@@ -312,6 +333,7 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (this.paused) return;
     const dt = delta / 1000;
+    if (this.state === 'aiming' || this.state === 'flying') this.runTimer(dt);
     if (this.state === 'aiming') {
       const left = this.keys.LEFT.isDown || this.keys.A.isDown;
       const right = this.keys.RIGHT.isDown || this.keys.D.isDown;
@@ -328,6 +350,40 @@ export class GameScene extends Phaser.Scene {
       f.sprite.setPosition(GRID_X + f.x, f.y);
       if (hit) this.land(f);
     }
+  }
+
+  // ---------- the row timer ----------
+
+  /** Advance the drop timer, add a row when it runs out, and keep the gauge, tick and music in step. */
+  private runTimer(dt: number): void {
+    const t = this.engine.tick(dt);
+    if (t) {
+      this.showDropRow(t.newRow, 'TIME!  The wall drops');
+      this.updateProgress();
+      this.lastTickSec = -1;
+      if (t.lost) {
+        this.endGame(false);
+        return;
+      }
+    }
+    const frac = this.engine.timerFraction();
+    if (this.gaugeFill) {
+      const warn = Phaser.Display.Color.Interpolate.ColorWithColor(new Phaser.Display.Color(0x55, 0x60, 0x8a), new Phaser.Display.Color(0xe5, 0x48, 0x4d), 100, Math.round(frac * 100));
+      this.gaugeFill.setFillStyle(Phaser.Display.Color.GetColor(warn.r, warn.g, warn.b));
+      this.gaugeFill.setSize(6, (GAUGE_BOTTOM - GAUGE_TOP) * frac);
+      this.gaugeFill.setAlpha(frac > 0.8 ? 0.65 + 0.35 * Math.sin(this.time.now / 70) : 1);
+      // a soft tick for each of the last three seconds
+      const left = (this.level.dropInterval ?? 0) * (1 - frac);
+      const sec = Math.ceil(left);
+      if (left <= 3 && sec !== this.lastTickSec) {
+        this.lastTickSec = sec;
+        sfx.tick();
+      }
+    }
+    // busier music as the wall gets low or the timer is about to run out
+    const wall = Phaser.Math.Clamp((this.engine.grid.lowestRow() - 7) / (LOSE_ROW - 1 - 7), 0, 1);
+    const time = Phaser.Math.Clamp((frac - 0.5) / 0.5, 0, 1);
+    setIntensity(0.25 + 0.75 * Math.max(wall, time));
   }
 
   // ---------- resolving a shot ----------
@@ -478,7 +534,7 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private showDropRow(newRow: Hold[]): void {
+  private showDropRow(newRow: Hold[], label = 'PUMPED!  The wall drops'): void {
     const grid = this.engine.grid;
     newRow.forEach((hold, c) => {
       this.makeSprite(hold, 0, c).y -= H;
@@ -488,7 +544,7 @@ export class GameScene extends Phaser.Scene {
       const target = this.pos(r, c);
       if (img) this.tweens.add({ targets: img, x: target.x, y: target.y, duration: 250, ease: 'Back.easeOut' });
     }
-    const t = txt(this, WIDTH / 2, 250, 'PUMPED!  The wall drops', 26, '#ff8a8a').setDepth(60);
+    const t = txt(this, WIDTH / 2, 250, label, 26, '#ff8a8a').setDepth(60);
     this.tweens.add({ targets: t, alpha: 0, y: 220, duration: 1200, delay: 300, onComplete: () => t.destroy() });
     this.shake(200, 0.006);
     sfx.drop();
@@ -496,8 +552,9 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- end of round ----------
 
-  private endGame(won: boolean, res: ShotResult): void {
+  private endGame(won: boolean, res?: ShotResult): void {
     this.state = 'over';
+    stopMusic(1.2);
     this.guide.clear();
     this.ghost.setVisible(false);
     this.hintQueue = [];
@@ -506,7 +563,7 @@ export class GameScene extends Phaser.Scene {
     let bonus = 0;
     let flash = false;
     if (won) {
-      this.removeHolds(res.leftover, 'fall');
+      this.removeHolds(res?.leftover ?? [], 'fall');
       ({ bonus, flash } = this.engine.finishWin());
       this.scoreText.setText(`Score ${this.engine.score}`);
       this.tweens.add({ targets: this.trackClimber, y: TRACK_TOP, duration: 500 });
@@ -571,7 +628,7 @@ export class GameScene extends Phaser.Scene {
     c.add(txt(this, WIDTH / 2, 264, `Best ${getBest(this.level.id)}  ·  Best combo x${e.bestCombo}`, 16, '#c9d1ee', false));
     if (won) c.add(txt(this, WIDTH / 2, 298, flash ? `FLASH! No pumps. Bonus +${bonus}` : `Route bonus +${bonus}`, 18, '#ffd166'));
     let y = 370;
-    if (won && !this.level.daily && !this.level.custom && this.level.grade < MAX_GRADE) {
+    if (won && !this.level.daily && !this.level.custom) {
       c.add(makeButton(this, WIDTH / 2, y, 260, 54, `Next: V${this.level.grade + 1}`, () => this.scene.restart({ level: gradeLevel(this.level.grade + 1) }), 0x2e8b57));
       y += 70;
     }
@@ -585,8 +642,13 @@ export class GameScene extends Phaser.Scene {
     if (this.state === 'over' || on === this.paused) return;
     this.paused = on;
     this.time.paused = on;
-    if (on) this.tweens.pauseAll();
-    else this.tweens.resumeAll();
+    if (on) {
+      this.tweens.pauseAll();
+      pauseMusic();
+    } else {
+      this.tweens.resumeAll();
+      resumeMusic();
+    }
     if (!on) {
       this.pauseUi?.destroy();
       this.pauseUi = null;
@@ -597,22 +659,23 @@ export class GameScene extends Phaser.Scene {
     this.pauseUi = c;
     c.add(this.add.rectangle(WIDTH / 2, 360, WIDTH, 720, 0x000000, 0.75).setInteractive());
     c.add(txt(this, WIDTH / 2, 150, 'PAUSED', 54, '#ffd166'));
-    const soundLabel = () => `Sound: ${isMutedNow() ? 'off' : 'on'}`;
-    const shakeLabel = () => `Screen shake: ${getShake() ? 'on' : 'off'}`;
     const label = (b: Phaser.GameObjects.Container) => b.list[1] as Phaser.GameObjects.Text;
-    c.add(makeButton(this, WIDTH / 2, 250, 280, 50, 'Resume', () => this.setPaused(false), 0x2e8b57));
-    c.add(makeButton(this, WIDTH / 2, 316, 280, 50, 'Restart', () => this.restart(), 0x2f6fdd));
-    const sound: Phaser.GameObjects.Container = makeButton(this, WIDTH / 2, 382, 280, 50, soundLabel(), () => {
+    const toggle = (y: number, text: () => string, flip: () => void): Phaser.GameObjects.Container => {
+      const b: Phaser.GameObjects.Container = makeButton(this, WIDTH / 2, y, 280, 48, text(), () => {
+        flip();
+        label(b).setText(text());
+      }, 0x59627f);
+      return b;
+    };
+    c.add(makeButton(this, WIDTH / 2, 235, 280, 48, 'Resume', () => this.setPaused(false), 0x2e8b57));
+    c.add(makeButton(this, WIDTH / 2, 293, 280, 48, 'Restart', () => this.restart(), 0x2f6fdd));
+    c.add(toggle(351, () => `Sound: ${isMutedNow() ? 'off' : 'on'}`, () => {
       toggleMute();
       this.muteText.setText(isMutedNow() ? '🔇' : '🔊');
-      label(sound).setText(soundLabel());
-    }, 0x59627f);
-    const shake: Phaser.GameObjects.Container = makeButton(this, WIDTH / 2, 448, 280, 50, shakeLabel(), () => {
-      setShake(!getShake());
-      label(shake).setText(shakeLabel());
-    }, 0x59627f);
-    c.add([sound, shake]);
-    c.add(makeButton(this, WIDTH / 2, 514, 280, 50, this.data0.from === 'editor' ? 'Back to editor' : 'Menu', () => this.leave(), 0x8a3b3b));
+    }));
+    c.add(toggle(409, () => `Music: ${getMusic() ? 'on' : 'off'}`, () => void toggleMusic()));
+    c.add(toggle(467, () => `Screen shake: ${getShake() ? 'on' : 'off'}`, () => setShake(!getShake())));
+    c.add(makeButton(this, WIDTH / 2, 525, 280, 48, this.data0.from === 'editor' ? 'Back to editor' : 'Menu', () => this.leave(), 0x8a3b3b));
     c.add(txt(this, WIDTH / 2, 575, 'P or Esc to resume', 14, '#9aa6cf', false));
   }
 }

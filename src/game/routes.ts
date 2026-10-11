@@ -1,5 +1,5 @@
 // Share codes for hand-built routes: "CP1-" + base64url of
-//   [rows, pumpLimit | bombs<<4 | wilds<<5, ...two cells per byte, checksum]
+//   [rows, pumpLimit | bombs<<4 | wilds<<5 | timer<<6, ...two cells per byte, checksum]
 // A cell is 0-4 (colours), 6 (volume), 7 (slick) or 15 (empty).
 import { COLS, isColour } from './grid';
 import { hashString, LevelSpec } from './levels';
@@ -16,7 +16,12 @@ export interface Route {
   shotsPerDrop: number;
   bombs: boolean;
   wilds: boolean;
+  timer: number; // 0 off, 1 slow, 2 normal, 3 fast
 }
+
+/** Seconds between rows for each timer setting (index 0 = off). */
+export const TIMER_SECONDS = [0, 40, 20, 10];
+export const TIMER_NAMES = ['off', 'slow', 'normal', 'fast'];
 
 export const rowLen = (r: number): number => (r % 2 === 0 ? COLS : COLS - 1);
 
@@ -39,7 +44,7 @@ export function encodeRoute(route: Route): string {
     }
   }
   if (nibbles.length % 2) nibbles.push(EMPTY);
-  const bytes = [rows, (route.shotsPerDrop & 0xf) | (route.bombs ? 0x10 : 0) | (route.wilds ? 0x20 : 0)];
+  const bytes = [rows, (route.shotsPerDrop & 0xf) | (route.bombs ? 0x10 : 0) | (route.wilds ? 0x20 : 0) | ((route.timer & 3) << 6)];
   for (let i = 0; i < nibbles.length; i += 2) bytes.push((nibbles[i] << 4) | nibbles[i + 1]);
   bytes.push(checksum(bytes));
   const b64 = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -59,7 +64,6 @@ export function decodeRoute(code: string): Route | null {
     for (let r = 0; r < rows; r++) cells += rowLen(r);
     if (bytes.length !== 2 + Math.ceil(cells / 2) + 1) return null;
     if (checksum(bytes.slice(0, -1)) !== bytes[bytes.length - 1]) return null;
-    if (bytes[1] & 0xc0) return null; // reserved bits
     const shotsPerDrop = bytes[1] & 0xf;
     if (shotsPerDrop < MIN_PUMP || shotsPerDrop > MAX_PUMP) return null;
 
@@ -77,7 +81,7 @@ export function decodeRoute(code: string): Route | null {
       layout.push(row);
     }
     if (!layout.some((row) => row.some(isColour))) return null; // nothing to pop
-    return { layout, shotsPerDrop, bombs: !!(bytes[1] & 0x10), wilds: !!(bytes[1] & 0x20) };
+    return { layout, shotsPerDrop, bombs: !!(bytes[1] & 0x10), wilds: !!(bytes[1] & 0x20), timer: (bytes[1] >> 6) & 3 };
   } catch {
     return null;
   }
@@ -102,6 +106,7 @@ export function routeLevel(route: Route, code: string): LevelSpec {
     shotsPerDrop: route.shotsPerDrop,
     bombs: route.bombs,
     wilds: route.wilds,
+    dropInterval: TIMER_SECONDS[route.timer] ?? 0,
     custom: true,
     layout: route.layout,
     code,

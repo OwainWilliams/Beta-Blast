@@ -24,6 +24,10 @@ Each colour of hold (jug, crimp, sloper, pinch, pocket) also has its own shape, 
 
 **Pump**: each shot that pops nothing fills a pip. When the pips fill, the wall drops a row. Reach the red line and you fall.
 
+**Row timer**: a gauge down the right edge fills with time, and when it is full the wall drops another row, so a game that drags on keeps getting harder. The higher the grade, the faster it fills (90 s at V0, about 38 s at V12, never faster than 20 s). Any new row restarts it, and a clear before the first timed row still earns FLASH.
+
+**Music**: a procedural loop with no audio files. The grade picks the chords and melody and sets the tempo (96 BPM at V0, up to 150). More layers join in as the wall gets low or the timer runs down. Toggle it in the pause menu or main menu.
+
 **Combo**: pop on back-to-back shots to build a multiplier (up to x2).
 
 **Special holds**
@@ -38,13 +42,13 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 
 **Scoring**: pops, drops (cut-off holds), bank shots (bonus per wall bounce), a route bonus per grade, and **FLASH** (+500) for sending without being pumped.
 
-**Modes**: V0 to V10 grades, and a **Daily Boulder** that is the same seeded route for everyone each day. Best scores and sends are saved in local storage.
+**Modes**: endless grades (V0, V1, V2... with no top, shown 12 to a page), and a **Daily Boulder** that is the same seeded route for everyone each day. Best scores and sends are saved in local storage.
 
-**Route Setter**: build your own route (10 rows, all hold types, pump limit, bombs and mega jugs on/off), test it, and share it as a link or code. Anyone opening `?route=CODE` plays it straight away, or use *Play a code* in the menu.
+**Route Setter**: build your own route (10 rows, all hold types, pump limit, bombs and mega jugs on/off, row timer off/slow/normal/fast), test it, and share it as a link or code. Anyone opening `?route=CODE` plays it straight away, or use *Play a code* in the menu.
 
 ## Balance
 
-`npm run balance` has a bot play every grade and prints win rates at two skill levels, so difficulty changes can be checked against numbers. The bot is greedy and never swaps, so it is a guide, not a replacement for playtesting. Tuning lives in `src/game/levels.ts`.
+`npm run balance` has a bot play grades V0 to V20 (set `TOP_GRADE=` for more) and prints win rates at two skill levels, with the row timer running at 2.2 s per shot (`SHOT_SECONDS=`), so difficulty changes can be checked against numbers. The bot is greedy and never swaps, so it is a guide, not a replacement for playtesting. Tuning lives in `src/game/levels.ts`.
 
 ## Project layout
 
@@ -54,10 +58,11 @@ src/game/engine.ts   the rules: shots, scoring, combo, pump, special holds (pure
 src/game/levels.ts   grades, seeded RNG, daily route
 src/game/routes.ts   share codes for custom routes
 src/game/audio.ts    synthesised sound effects
+src/game/music.ts    procedural background music
 src/scenes/          Boot (draws textures), Menu, Game, Editor
 tests/               vitest, plus an opt-in balance bot
 ```
 
 ## Ideas for later
 
-Jug wildcard and crumbling holds, a leaderboard for the daily route (needs a small backend), versus mode, music, installable PWA.
+Crumbling holds, a survival mode where rows never stop, a leaderboard for the daily route (needs a small backend), versus mode, installable PWA.

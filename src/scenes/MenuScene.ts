@@ -1,10 +1,14 @@
 import Phaser from 'phaser';
 import { WIDTH } from '../config';
-import { dailyLevel, gradeLevel, LevelSpec, MAX_GRADE } from '../game/levels';
+import { dailyLevel, gradeLevel, LevelSpec } from '../game/levels';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
-import { getBest, getShake, isSent, setShake } from '../game/storage';
+import { getBest, getMusic, getShake, isSent, setShake } from '../game/storage';
 import { isMutedNow, toggleMute, unlockAudio } from '../game/audio';
+import { toggleMusic } from '../game/music';
 import { makeButton, txt } from '../ui';
+
+const PAGE = 12;
+let menuPage: number | null = null; // remembered while the page is open
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -24,11 +28,29 @@ export class MenuScene extends Phaser.Scene {
     makeButton(this, WIDTH / 2, 262, 360, 52, `Daily Boulder (V${daily.grade})${isSent(daily.id) ? '  ✓' : ''}`, () => this.play(daily), 0xd9622b, 22);
     txt(this, WIDTH / 2, 298, `Best today: ${getBest(daily.id)}`, 14, '#c9d1ee', false);
 
-    txt(this, WIDTH / 2, 335, 'Pick a grade', 20);
-    for (let g = 0; g <= MAX_GRADE; g++) {
+    // Grades never run out, so they come in pages of 12. Open on the page with your first unsent grade.
+    if (menuPage === null) {
+      let first = 0;
+      while (isSent(`v${first}`)) first++;
+      menuPage = Math.floor(first / PAGE);
+    }
+    const from = menuPage * PAGE;
+    txt(this, WIDTH / 2, 335, `Grades V${from} to V${from + PAGE - 1}`, 20);
+    const arrow = (x: number, label: string, enabled: boolean, delta: number) => {
+      const b = makeButton(this, x, 335, 44, 34, label, () => {
+        if (!enabled) return;
+        menuPage = Math.max(0, (menuPage ?? 0) + delta);
+        this.scene.restart();
+      }, enabled ? 0x59627f : 0x2a2f42, 20);
+      if (!enabled) b.setAlpha(0.4);
+    };
+    arrow(100, '‹', menuPage > 0, -1);
+    arrow(440, '›', true, 1);
+    for (let i = 0; i < PAGE; i++) {
+      const g = from + i;
       const level = gradeLevel(g);
-      const x = 75 + (g % 4) * 130;
-      const y = 380 + Math.floor(g / 4) * 74;
+      const x = 75 + (i % 4) * 130;
+      const y = 380 + Math.floor(i / 4) * 74;
       const sent = isSent(level.id);
       makeButton(this, x, y, 112, 50, `V${g}${sent ? ' ✓' : ''}`, () => this.play(level), sent ? 0x2e8b57 : 0x2f6fdd, 22);
       txt(this, x, y + 34, `best ${getBest(level.id)}`, 12, '#9aa6cf', false);
@@ -40,14 +62,16 @@ export class MenuScene extends Phaser.Scene {
     const help = ['Aim with mouse / touch, release to shoot. Arrows + Space work too.', 'Tap NEXT or press S to swap. P pauses.'];
     help.forEach((line, i) => txt(this, WIDTH / 2, 650 + i * 18, line, 13, '#9aa6cf', false));
 
-    const sound = makeButton(this, 140, 695, 200, 32, `Sound: ${isMutedNow() ? 'off' : 'on'}`, () => {
-      toggleMute();
-      (sound.list[1] as Phaser.GameObjects.Text).setText(`Sound: ${isMutedNow() ? 'off' : 'on'}`);
-    }, 0x59627f, 14);
-    const shake = makeButton(this, 400, 695, 200, 32, `Screen shake: ${getShake() ? 'on' : 'off'}`, () => {
-      setShake(!getShake());
-      (shake.list[1] as Phaser.GameObjects.Text).setText(`Screen shake: ${getShake() ? 'on' : 'off'}`);
-    }, 0x59627f, 14);
+    const label = (b: Phaser.GameObjects.Container) => b.list[1] as Phaser.GameObjects.Text;
+    const toggle = (x: number, text: () => string, flip: () => void): void => {
+      const b: Phaser.GameObjects.Container = makeButton(this, x, 695, 160, 32, text(), () => {
+        flip();
+        label(b).setText(text());
+      }, 0x59627f, 14);
+    };
+    toggle(95, () => `Sound: ${isMutedNow() ? 'off' : 'on'}`, () => void toggleMute());
+    toggle(270, () => `Music: ${getMusic() ? 'on' : 'off'}`, () => void toggleMusic());
+    toggle(445, () => `Shake: ${getShake() ? 'on' : 'off'}`, () => setShake(!getShake()));
 
     this.input.once('pointerdown', unlockAudio);
   }

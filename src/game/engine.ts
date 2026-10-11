@@ -50,6 +50,7 @@ export class Engine {
   score = 0;
   combo = 0;
   bestCombo = 0;
+  dropClock = 0; // seconds since the last row was added
 
   constructor(readonly level: LevelSpec) {
     this.rng = mulberry32(level.seed);
@@ -292,7 +293,7 @@ export class Engine {
       return res;
     }
 
-    if (!hit.length && this.misses >= this.level.shotsPerDrop) res.newRow = this.addRow();
+    if (!hit.length && this.misses >= this.level.shotsPerDrop) res.newRow = this.addRow(true);
     if (this.grid.lowestRow() >= LOSE_ROW) res.lost = true;
     else this.refreshQueue();
     return res;
@@ -317,13 +318,34 @@ export class Engine {
     return broken;
   }
 
-  private addRow(): Hold[] {
+  /** Push the wall down a row. Any new row restarts the timer. `resetPump` is for the pump drop only. */
+  private addRow(resetPump: boolean): Hold[] {
     const present = this.grid.presentTypes();
     const types = Array.from({ length: COLS }, () => present[Math.floor(this.rng() * present.length)] ?? 0);
     this.grid.addRowTop(types);
-    this.misses = 0;
+    if (resetPump) this.misses = 0;
     this.drops++;
+    this.dropClock = 0;
     return this.grid.rows[0].filter((h): h is Hold => !!h);
+  }
+
+  /**
+   * Advance the drop timer by `dt` seconds. When it runs out a new row is added, so a game that
+   * drags on keeps getting harder. Call it while the player is aiming or a shot is in the air.
+   */
+  tick(dt: number): { newRow: Hold[]; lost: boolean } | null {
+    const interval = this.level.dropInterval ?? 0;
+    if (interval <= 0 || this.grid.presentTypes().length === 0) return null;
+    this.dropClock += dt;
+    if (this.dropClock < interval) return null;
+    const newRow = this.addRow(false);
+    return { newRow, lost: this.grid.lowestRow() >= LOSE_ROW };
+  }
+
+  /** 0 right after a row, 1 when the next one is due. 0 when the level has no timer. */
+  timerFraction(): number {
+    const interval = this.level.dropInterval ?? 0;
+    return interval > 0 ? Math.min(1, this.dropClock / interval) : 0;
   }
 
   /** Called once when the route is sent. */
