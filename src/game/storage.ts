@@ -2,6 +2,7 @@ const KEY = 'crimp-and-pop.v1';
 
 interface Save {
   best: Record<string, number>;
+  bestTime: Record<string, number>; // longest survival, seconds
   sent: Record<string, boolean>;
   muted: boolean;
   shake: boolean;
@@ -12,11 +13,11 @@ interface Save {
 function load(): Save {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { best: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, ...JSON.parse(raw) };
+    if (raw) return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, ...JSON.parse(raw) };
   } catch {
     /* storage unavailable */
   }
-  return { best: {}, sent: {}, muted: false, shake: true, music: true, hints: {} };
+  return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {} };
 }
 
 function save(s: Save): void {
@@ -57,4 +58,11 @@ export function markHint(id: string): void {
 export const getMusic = (): boolean => load().music;
 export function setMusic(music: boolean): void {
   save({ ...load(), music });
+}
+
+export const getBestTime = (id: string): number => load().bestTime[id] ?? 0;
+export function recordTime(id: string, seconds: number): void {
+  const s = load();
+  s.bestTime[id] = Math.max(s.bestTime[id] ?? 0, Math.round(seconds));
+  save(s);
 }

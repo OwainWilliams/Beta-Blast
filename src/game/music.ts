@@ -182,6 +182,7 @@ let step = 0;
 let nextTime = 0;
 let intensity = 0.3;
 let paused = false;
+let pending: Pattern | null = null; // takes over at the start of the next loop
 
 export const isMusicOn = (): boolean => getMusic();
 
@@ -196,6 +197,10 @@ function pump(): void {
   if (nextTime < ctx.currentTime - 0.25) nextTime = ctx.currentTime + 0.05; // fell behind (tab was in the background)
   const sixteenth = 60 / pattern.bpm / 4;
   while (nextTime < ctx.currentTime + 0.15) {
+    if (pending && step % STEPS === 0) {
+      pattern = pending;
+      pending = null;
+    }
     scheduleStep(ctx, master, pattern, step, nextTime, intensity);
     nextTime += sixteenth;
     step++;
@@ -239,6 +244,7 @@ export function stopMusic(fade = 0.6): void {
   }
   master = null;
   pattern = null;
+  pending = null;
 }
 
 export function pauseMusic(): void {
@@ -251,6 +257,12 @@ export function resumeMusic(): void {
   paused = false;
   if (ctx) nextTime = ctx.currentTime + 0.05;
   applyGain(0.1);
+}
+
+/** Move the music on to another grade's tempo and chords, when the current loop comes round. */
+export function changeGrade(grade: number): void {
+  if (pattern) pending = buildPattern(grade);
+  else wantGrade = grade;
 }
 
 /** 0 = calm, 1 = about to lose. Brings in the busier layers. */

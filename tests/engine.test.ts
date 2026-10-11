@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Engine } from '../src/game/engine';
 import { BOMB, SLICK, VOLUME, WILD } from '../src/game/grid';
-import { gradeLevel, LevelSpec } from '../src/game/levels';
+import { gradeLevel, LevelSpec, survivalLevel } from '../src/game/levels';
 import { emptyLayout } from '../src/game/routes';
 
 function custom(build: (l: number[][]) => void, extra: Partial<LevelSpec> = {}): Engine {
@@ -320,6 +320,81 @@ describe('row timer', () => {
     const e = timed(5);
     e.tick(5.1);
     expect(e.finishWin().flash).toBe(false);
+  });
+});
+
+describe('survival', () => {
+  const fresh = (seed = 7) => new Engine(survivalLevel(seed));
+
+  it('starts small and calm', () => {
+    const e = fresh();
+    expect(e.grid.count()).toBeGreaterThan(20);
+    expect(e.grid.lowestRow()).toBe(3);
+    expect(e.grid.presentTypes().length).toBeLessThanOrEqual(3);
+    expect(e.stage()).toBe(1);
+    expect(e.currentInterval()).toBe(11);
+  });
+
+  it('moves up a stage with time, speeding the rows up and paying a bonus', () => {
+    const e = fresh();
+    const result = e.tick(40);
+    expect(result!.stage).toBe(2);
+    expect(e.stage()).toBe(2);
+    expect(e.currentInterval()).toBeCloseTo(11 * 0.95);
+    expect(e.score).toBe(250);
+    // the same stage is only announced once
+    expect(e.tick(0.1)).toBeNull();
+  });
+
+  it('never drops rows faster than the floor', () => {
+    const e = fresh();
+    e.elapsed = 40 * 200;
+    expect(e.currentInterval()).toBe(4.5);
+  });
+
+  it('adds a row on the timer using the current stage colours', () => {
+    const e = fresh();
+    const result = e.tick(11.5)!;
+    expect(result.newRow).toHaveLength(e.grid.rowLength(0));
+    for (const h of result.newRow!) expect(h.type).toBeLessThan(3); // stage 1 has 3 colours
+  });
+
+  it('brings in more colours and then obstacles as the stages go by', () => {
+    const e = fresh(11);
+    e.elapsed = 40 * 9; // stage 10
+    const kinds = new Set<number>();
+    for (let i = 0; i < 60; i++) for (const h of e.tick(e['currentInterval']() + 0.01)?.newRow ?? []) kinds.add(h.type);
+    expect(kinds.has(4)).toBe(true); // all five colours
+    expect(kinds.has(VOLUME) || kinds.has(SLICK)).toBe(true);
+  });
+
+  it('gives new volumes their full two hits', () => {
+    const e = fresh(3);
+    e.elapsed = 40 * 20;
+    const volumes: number[] = [];
+    for (let i = 0; i < 80; i++) for (const h of e.tick(5)?.newRow ?? []) if (h.type === VOLUME) volumes.push(h.hp ?? -1);
+    expect(volumes.length).toBeGreaterThan(0);
+    expect(volumes.every((hp) => hp === 2)).toBe(true);
+  });
+
+  it('clearing the wall is a clean sweep, not a win', () => {
+    const e = new Engine({ ...survivalLevel(5), layout: (() => { const l = emptyLayout(); l[0][0] = 1; l[0][1] = 1; l[0][9] = VOLUME; return l; })() });
+    const res = e.land(1, e.grid.cellX(0, 2), e.grid.cellY(0), 0);
+    expect(res.won).toBe(false);
+    expect(res.lost).toBe(false);
+    expect(res.sweep).toBe(true);
+    expect(res.leftover).toHaveLength(1); // the volume is swept away
+    expect(res.newRow).toHaveLength(9 + 10 + 9); // rows alternate between 9 and 10 holds
+    expect(e.grid.count()).toBe(28);
+    expect(e.score).toBeGreaterThanOrEqual(500);
+    expect(e.grid.presentTypes().length).toBeGreaterThan(0);
+  });
+
+  it('a normal level still ends when the wall is cleared', () => {
+    const e = custom((l) => { l[0][0] = 1; l[0][1] = 1; });
+    const res = e.land(1, e.grid.cellX(0, 2), e.grid.cellY(0), 0);
+    expect(res.won).toBe(true);
+    expect(res.sweep).toBe(false);
   });
 });
 

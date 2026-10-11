@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { WIDTH } from '../config';
-import { dailyLevel, gradeLevel, LevelSpec } from '../game/levels';
+import { dailyLevel, gradeLevel, LevelSpec, survivalLevel } from '../game/levels';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
-import { getBest, getMusic, getShake, isSent, setShake } from '../game/storage';
+import { getBest, getBestTime, getMusic, getShake, isSent, setShake } from '../game/storage';
 import { isMutedNow, toggleMute, unlockAudio } from '../game/audio';
 import { toggleMusic } from '../game/music';
 import { makeButton, txt } from '../ui';
@@ -25,8 +25,11 @@ export class MenuScene extends Phaser.Scene {
     txt(this, WIDTH / 2, 198, 'Shoot the holds. Send the route.', 18, '#c9d1ee', false);
 
     const daily = dailyLevel();
-    makeButton(this, WIDTH / 2, 262, 360, 52, `Daily Boulder (V${daily.grade})${isSent(daily.id) ? '  ✓' : ''}`, () => this.play(daily), 0xd9622b, 22);
-    txt(this, WIDTH / 2, 298, `Best today: ${getBest(daily.id)}`, 14, '#c9d1ee', false);
+    makeButton(this, 140, 262, 250, 52, `Daily Boulder (V${daily.grade})${isSent(daily.id) ? '  ✓' : ''}`, () => this.play(daily), 0xd9622b, 19);
+    txt(this, 140, 298, `Best today: ${getBest(daily.id)}`, 14, '#c9d1ee', false);
+    makeButton(this, 400, 262, 250, 52, 'Survival', () => this.play(survivalLevel()), 0xc23b5a, 22);
+    const longest = getBestTime('survival');
+    txt(this, 400, 298, longest ? `Best ${getBest('survival')} · longest ${Math.floor(longest / 60)}:${String(longest % 60).padStart(2, '0')}` : 'How long can you last?', 14, '#c9d1ee', false);
 
     // Grades never run out, so they come in pages of 12. Open on the page with your first unsent grade.
     if (menuPage === null) {

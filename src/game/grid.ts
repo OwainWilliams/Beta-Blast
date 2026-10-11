@@ -174,7 +174,7 @@ export class Grid {
   addRowTop(types: number[]): void {
     this.parity ^= 1;
     const len = this.rowLength(0);
-    this.rows.unshift(Array.from({ length: len }, (_, i) => ({ type: types[i % types.length] })));
+    this.rows.unshift(Array.from({ length: len }, (_, i) => makeHold(types[i % types.length])));
   }
 
   cells(): Cell[] {

@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
 import { GRID_X, HEIGHT, HOLD_COLOURS, LAUNCH_X, LAUNCH_Y, LOSE_ROW, LOSE_Y, WIDTH } from '../config';
-import { Engine, Flight, MAX_AIM, Removed, SPEED, ShotResult } from '../game/engine';
-import { BOMB, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
-import { gradeLevel, LevelSpec } from '../game/levels';
-import { pauseMusic, resumeMusic, setIntensity, startMusic, stopMusic, toggleMusic } from '../game/music';
+import { Engine, Flight, MAX_AIM, Removed, SPEED, STAGE_BONUS, SWEEP_BONUS, ShotResult } from '../game/engine';
+import { BOMB, Cell, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
+import { gradeLevel, LevelSpec, survivalLevel } from '../game/levels';
+import { changeGrade, pauseMusic, resumeMusic, setIntensity, startMusic, stopMusic, toggleMusic } from '../game/music';
 import { isMutedNow, sfx, toggleMute, unlockAudio } from '../game/audio';
-import { getBest, getMusic, getShake, hintSeen, markHint, recordResult, setShake } from '../game/storage';
+import { getBest, getBestTime, getMusic, getShake, hintSeen, markHint, recordResult, recordTime, setShake } from '../game/storage';
 import { ChalkBag, chalkPuff } from '../chalkBag';
 import { makeButton, makeClimber, textureFor, txt } from '../ui';
 
@@ -51,7 +51,11 @@ export class GameScene extends Phaser.Scene {
   private scoreText!: Phaser.GameObjects.Text;
   private comboText!: Phaser.GameObjects.Text;
   private muteText!: Phaser.GameObjects.Text;
-  private trackClimber!: Phaser.GameObjects.Container;
+  private trackClimber: Phaser.GameObjects.Container | null = null;
+  private stageText: Phaser.GameObjects.Text | null = null;
+  private clockText: Phaser.GameObjects.Text | null = null;
+  private lastClock = -1;
+  private stageBanner: Phaser.GameObjects.Text[] = [];
   private baseClimber!: Phaser.GameObjects.Container;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
 
@@ -91,14 +95,18 @@ export class GameScene extends Phaser.Scene {
     line.lineStyle(3, 0xe5484d, 0.7);
     for (let x = GRID_X; x < WIDTH - GRID_X; x += 16) line.lineBetween(x, LOSE_Y, x + 8, LOSE_Y);
 
-    this.buildTrack();
+    this.trackClimber = null;
+    if (!this.level.survival) this.buildTrack();
     this.buildHud();
     this.buildLauncher();
     this.buildInput();
     this.refreshPips();
     this.updateProgress(false);
+    this.lastClock = -1;
+    this.stageBanner = [];
 
     this.hint('aim', 'Aim with the mouse or your finger, then release to shoot');
+    if (this.level.survival) this.hint('survival', 'Survival: rows never stop and getting harder. Clear holds to hold them back and last as long as you can');
     if (this.gaugeFill) this.hint('timer', 'The gauge on the right fills with time. When it is full, the wall drops a row');
     this.refreshQueue(); // queues the bomb / mega jug tips if one is already loaded
     const kinds = new Set(this.engine.grid.cells().map(([r, c]) => this.engine.grid.get(r, c)!.type));
@@ -128,9 +136,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private buildHud(): void {
-    txt(this, GRID_X + 40, 575, this.level.custom ? 'Custom' : this.level.label, 22, '#ffd166');
+    this.stageText = null;
+    this.clockText = null;
+    if (this.level.survival) this.stageText = txt(this, GRID_X + 48, 575, 'STAGE 1', 20, '#ffd166');
+    else txt(this, GRID_X + 40, 575, this.level.custom ? 'Custom' : this.level.label, 22, '#ffd166');
     this.scoreText = txt(this, LAUNCH_X, 575, 'Score 0', 20);
-    txt(this, WIDTH - GRID_X - 60, 575, `Best ${getBest(this.level.id)}`, 16, '#c9d1ee', false);
+    if (this.level.survival) this.clockText = txt(this, WIDTH - GRID_X - 50, 575, '0:00', 20, '#c9d1ee');
+    else txt(this, WIDTH - GRID_X - 60, 575, `Best ${getBest(this.level.id)}`, 16, '#c9d1ee', false);
     this.comboText = txt(this, LAUNCH_X, 548, '', 20, '#ff9f43').setDepth(5).setVisible(false);
     this.muteText = txt(this, WIDTH - 24, 700, isMutedNow() ? '🔇' : '🔊', 18).setInteractive({ useHandCursor: true });
     this.muteText.on('pointerup', () => this.muteText.setText(toggleMute() ? '🔇' : '🔊'));
@@ -232,6 +244,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateProgress(animate = true): void {
+    if (!this.trackClimber) return;
     const y = TRACK_BOTTOM - (TRACK_BOTTOM - TRACK_TOP) * this.engine.progress();
     if (animate) this.tweens.add({ targets: this.trackClimber, y, duration: 350, ease: 'Sine.easeOut' });
     else this.trackClimber.y = y;
@@ -357,13 +370,22 @@ export class GameScene extends Phaser.Scene {
   /** Advance the drop timer, add a row when it runs out, and keep the gauge, tick and music in step. */
   private runTimer(dt: number): void {
     const t = this.engine.tick(dt);
-    if (t) {
-      this.showDropRow(t.newRow, 'TIME!  The wall drops');
+    if (t?.newRow) {
+      // survival rows come every few seconds, so they get a lighter touch than a pump drop
+      this.showDropRow(t.newRow, this.level.survival ? '' : 'TIME!  The wall drops');
       this.updateProgress();
       this.lastTickSec = -1;
-      if (t.lost) {
-        this.endGame(false);
-        return;
+    }
+    if (t?.stage) this.stageUp(t.stage);
+    if (t?.lost) {
+      this.endGame(false);
+      return;
+    }
+    if (this.clockText) {
+      const sec = Math.floor(this.engine.elapsed);
+      if (sec !== this.lastClock) {
+        this.lastClock = sec;
+        this.clockText.setText(`${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`);
       }
     }
     const frac = this.engine.timerFraction();
@@ -373,7 +395,7 @@ export class GameScene extends Phaser.Scene {
       this.gaugeFill.setSize(6, (GAUGE_BOTTOM - GAUGE_TOP) * frac);
       this.gaugeFill.setAlpha(frac > 0.8 ? 0.65 + 0.35 * Math.sin(this.time.now / 70) : 1);
       // a soft tick for each of the last three seconds
-      const left = (this.level.dropInterval ?? 0) * (1 - frac);
+      const left = this.engine.currentInterval() * (1 - frac);
       const sec = Math.ceil(left);
       if (left <= 3 && sec !== this.lastTickSec) {
         this.lastTickSec = sec;
@@ -384,6 +406,31 @@ export class GameScene extends Phaser.Scene {
     const wall = Phaser.Math.Clamp((this.engine.grid.lowestRow() - 7) / (LOSE_ROW - 1 - 7), 0, 1);
     const time = Phaser.Math.Clamp((frac - 0.5) / 0.5, 0, 1);
     setIntensity(0.25 + 0.75 * Math.max(wall, time));
+  }
+
+  /** Survival: every colour is gone. Leftover obstacles drop away and three fresh rows arrive. */
+  private cleanSweep(res: ShotResult): void {
+    this.removeHolds(res.leftover, 'fall');
+    this.showDropRow(res.newRow ?? [], `CLEAN SWEEP!  +${SWEEP_BONUS}`, 3);
+    sfx.win();
+    this.cameras.main.flash(180, 255, 255, 255);
+  }
+
+  /** Survival moved up a stage: faster rows, and sometimes something new on the wall. */
+  private stageUp(stage: number): void {
+    const news: Record<number, string> = { 3: 'Four colours now', 4: 'Volumes appear', 5: 'All five colours', 6: 'Slick holds appear' };
+    this.stageText?.setText(`STAGE ${stage}`);
+    for (const old of this.stageBanner) old.destroy(); // a new stage replaces any banner still showing
+    changeGrade(stage - 1); // the music picks up the pace at the next loop
+    sfx.stage();
+    const banner = txt(this, WIDTH / 2, 300, `STAGE ${stage}`, 60, '#ffd166').setDepth(70).setScale(0.3);
+    const lines = [`+${STAGE_BONUS}  ·  rows come faster`, news[stage]].filter(Boolean).join('\n');
+    const sub = txt(this, WIDTH / 2, 352, lines, 18, '#ffffff').setDepth(70).setAlpha(0);
+    this.tweens.add({ targets: banner, scale: 1, duration: 300, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: sub, alpha: 1, duration: 300, delay: 150 });
+    this.stageBanner = [banner, sub];
+    this.tweens.add({ targets: [banner, sub], alpha: 0, duration: 400, delay: 1700, onComplete: () => { banner.destroy(); sub.destroy(); } });
+    this.scoreText.setText(`Score ${this.engine.score}`);
   }
 
   // ---------- resolving a shot ----------
@@ -418,8 +465,10 @@ export class GameScene extends Phaser.Scene {
     this.scoreText.setText(`Score ${this.engine.score}`);
     this.showCombo(res.combo);
 
-    if (res.popped.length) this.celebratePop(res, target);
-    else {
+    if (res.popped.length) {
+      this.celebratePop(res, target);
+      if (res.sweep) this.cleanSweep(res);
+    } else {
       if (res.newRow) this.showDropRow(res.newRow);
       this.hint('match', 'Match 3 or more of the same hold to pop them');
       if (this.engine.misses > 0) this.hint('pump', 'Misses fill the pump pips. Fill them all and the wall drops a row');
@@ -534,19 +583,25 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private showDropRow(newRow: Hold[], label = 'PUMPED!  The wall drops'): void {
+  /** Animate new rows arriving at the top. `rows` is how many were added at once; an empty label skips the banner. */
+  private showDropRow(newHolds: Hold[], label = 'PUMPED!  The wall drops', rows = 1): void {
     const grid = this.engine.grid;
-    newRow.forEach((hold, c) => {
-      this.makeSprite(hold, 0, c).y -= H;
-    });
+    const where = new Map<Hold, Cell>();
+    for (const [r, c] of grid.cells()) where.set(grid.get(r, c)!, [r, c]);
+    for (const hold of newHolds) {
+      const cell = where.get(hold);
+      if (cell) this.makeSprite(hold, cell[0], cell[1]).y -= H * rows;
+    }
     for (const [r, c] of grid.cells()) {
       const img = this.sprites.get(grid.get(r, c)!);
       const target = this.pos(r, c);
       if (img) this.tweens.add({ targets: img, x: target.x, y: target.y, duration: 250, ease: 'Back.easeOut' });
     }
-    const t = txt(this, WIDTH / 2, 250, label, 26, '#ff8a8a').setDepth(60);
-    this.tweens.add({ targets: t, alpha: 0, y: 220, duration: 1200, delay: 300, onComplete: () => t.destroy() });
-    this.shake(200, 0.006);
+    if (label) {
+      const t = txt(this, WIDTH / 2, 250, label, 26, label.startsWith('CLEAN') ? '#ffd166' : '#ff8a8a').setDepth(60);
+      this.tweens.add({ targets: t, alpha: 0, y: 220, duration: 1200, delay: 300, onComplete: () => t.destroy() });
+    }
+    this.shake(label ? 200 : 120, label ? 0.006 : 0.003);
     sfx.drop();
   }
 
@@ -562,11 +617,13 @@ export class GameScene extends Phaser.Scene {
     this.hintBox = null;
     let bonus = 0;
     let flash = false;
+    const previousBest = getBest(this.level.id);
+    const previousTime = getBestTime(this.level.id);
     if (won) {
       this.removeHolds(res?.leftover ?? [], 'fall');
       ({ bonus, flash } = this.engine.finishWin());
       this.scoreText.setText(`Score ${this.engine.score}`);
-      this.tweens.add({ targets: this.trackClimber, y: TRACK_TOP, duration: 500 });
+      if (this.trackClimber) this.tweens.add({ targets: this.trackClimber, y: TRACK_TOP, duration: 500 });
       // the climber tops out in a cloud of chalk, and the bag sends a big puff straight up
       this.time.delayedCall(500, () => {
         chalkPuff(this, TRACK_X + 6, TRACK_TOP - 4, 1, -0.3, 0.6, 90);
@@ -580,13 +637,15 @@ export class GameScene extends Phaser.Scene {
       sfx.win();
       this.sendMoment(flash);
     } else {
-      this.tweens.add({ targets: this.trackClimber, y: TRACK_BOTTOM + 90, angle: 270, alpha: 0, duration: 700, ease: 'Quad.easeIn' });
+      if (this.trackClimber) this.tweens.add({ targets: this.trackClimber, y: TRACK_BOTTOM + 90, angle: 270, alpha: 0, duration: 700, ease: 'Quad.easeIn' });
       this.tweens.add({ targets: this.baseClimber, angle: 90, duration: 300 });
       this.shake(300, 0.01);
       sfx.lose();
     }
     recordResult(this.level.id, this.engine.score, won);
-    this.time.delayedCall(won ? 2000 : 900, () => this.showOverlay(won, bonus, flash));
+    if (this.level.survival) recordTime(this.level.id, this.engine.elapsed);
+    const records = { score: this.engine.score > previousBest, time: Math.round(this.engine.elapsed) > previousTime };
+    this.time.delayedCall(won ? 2000 : 900, () => this.showOverlay(won, bonus, flash, records));
   }
 
   /** Big "SENT!" with a flash and a shower of chalk and tape. */
@@ -616,16 +675,25 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
-    this.scene.restart(this.data0);
+    this.scene.restart(this.level.survival ? { level: survivalLevel() } : this.data0);
   }
 
-  private showOverlay(won: boolean, bonus: number, flash: boolean): void {
+  private showOverlay(won: boolean, bonus: number, flash: boolean, records: { score: boolean; time: boolean }): void {
     const e = this.engine;
     const c = this.add.container(0, 0).setDepth(100);
     c.add(this.add.rectangle(WIDTH / 2, 360, WIDTH, 720, 0x000000, 0.7).setInteractive());
     c.add(txt(this, WIDTH / 2, 170, won ? 'SENT!' : 'FELL!', 64, won ? '#ffd166' : '#ff8a8a'));
-    c.add(txt(this, WIDTH / 2, 230, `${this.level.custom ? 'Custom route' : this.level.label}  ·  Score ${e.score}`, 24));
-    c.add(txt(this, WIDTH / 2, 264, `Best ${getBest(this.level.id)}  ·  Best combo x${e.bestCombo}`, 16, '#c9d1ee', false));
+    if (this.level.survival) {
+      const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+      c.add(txt(this, WIDTH / 2, 230, `Survived ${mmss(e.elapsed)}  ·  Stage ${e.stage()}`, 26));
+      c.add(txt(this, WIDTH / 2, 266, `Score ${e.score}  ·  Best combo x${e.bestCombo}`, 18, '#ffffff'));
+      c.add(txt(this, WIDTH / 2, 296, `Best score ${getBest(this.level.id)}  ·  Longest ${mmss(getBestTime(this.level.id))}`, 15, '#c9d1ee', false));
+      const badge = [records.score && 'NEW BEST SCORE', records.time && 'NEW LONGEST RUN'].filter(Boolean).join('   ·   ');
+      if (badge) c.add(txt(this, WIDTH / 2, 326, badge, 16, '#ffd166'));
+    } else {
+      c.add(txt(this, WIDTH / 2, 230, `${this.level.custom ? 'Custom route' : this.level.label}  ·  Score ${e.score}`, 24));
+      c.add(txt(this, WIDTH / 2, 264, `Best ${getBest(this.level.id)}  ·  Best combo x${e.bestCombo}`, 16, '#c9d1ee', false));
+    }
     if (won) c.add(txt(this, WIDTH / 2, 298, flash ? `FLASH! No pumps. Bonus +${bonus}` : `Route bonus +${bonus}`, 18, '#ffd166'));
     let y = 370;
     if (won && !this.level.daily && !this.level.custom) {

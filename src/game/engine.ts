@@ -1,7 +1,7 @@
 // The rules of the game, with no Phaser in sight. The scene feeds it shots and
 // animates what comes back, and the balance bot plays it headlessly.
 import { BOMB, Cell, COLS, D, Grid, Hold, isColour, isObstacle, LOSE_ROW, makeHold, R, SLICK, VOLUME, WILD } from './grid';
-import { LevelSpec, mulberry32 } from './levels';
+import { LevelSpec, mulberry32, survivalColours, survivalInterval, survivalSlickRate, survivalStage, survivalVolumeRate } from './levels';
 
 export const SPEED = 950; // px/s
 export const MAX_AIM = 1.35; // radians from vertical
@@ -34,8 +34,19 @@ export interface ShotResult {
   combo: number;
   won: boolean;
   lost: boolean;
-  leftover: Removed[]; // obstacles still on the wall when the route is sent
+  leftover: Removed[]; // obstacles still on the wall when the route is sent, or swept away in survival
+  sweep: boolean; // survival: every colour was cleared, so fresh rows were added
 }
+
+export interface TickResult {
+  newRow: Hold[] | null; // set when the timer added a row
+  lost: boolean;
+  stage: number | null; // set when survival reached a new stage
+}
+
+export const SWEEP_BONUS = 500;
+export const SWEEP_ROWS = 3;
+export const STAGE_BONUS = 250;
 
 const key = (c: Cell) => `${c[0]},${c[1]}`;
 
@@ -51,6 +62,8 @@ export class Engine {
   combo = 0;
   bestCombo = 0;
   dropClock = 0; // seconds since the last row was added
+  elapsed = 0; // seconds the timer has run (survival time)
+  private lastStage = 1;
 
   constructor(readonly level: LevelSpec) {
     this.rng = mulberry32(level.seed);
@@ -240,6 +253,7 @@ export class Engine {
       won: false,
       lost: false,
       leftover: [],
+      sweep: false,
     };
     const snapped = this.grid.nearestEmpty(x, y);
     if (!snapped) {
@@ -285,12 +299,19 @@ export class Engine {
     res.combo = this.combo;
 
     if (this.grid.presentTypes().length === 0) {
-      res.won = true;
       for (const c of this.grid.cells()) {
         res.leftover.push({ cell: c, hold: this.grid.get(c[0], c[1])! });
         this.grid.set(c[0], c[1], null);
       }
-      return res;
+      if (!this.level.survival) {
+        res.won = true;
+        return res;
+      }
+      // Survival never ends by clearing the wall: you get a bonus and the next three rows arrive at once.
+      res.sweep = true;
+      res.newRow = [];
+      for (let i = 0; i < SWEEP_ROWS; i++) res.newRow.push(...this.addRow(false));
+      this.score += SWEEP_BONUS;
     }
 
     if (!hit.length && this.misses >= this.level.shotsPerDrop) res.newRow = this.addRow(true);
@@ -318,11 +339,37 @@ export class Engine {
     return broken;
   }
 
+  /** What a new row is made of. Normal levels reuse the colours still on the wall; survival follows the stage. */
+  private rowTypes(): number[] {
+    if (!this.level.survival) {
+      const present = this.grid.presentTypes();
+      return Array.from({ length: COLS }, () => present[Math.floor(this.rng() * present.length)] ?? 0);
+    }
+    const stage = this.stage();
+    const colours = survivalColours(stage);
+    const volume = survivalVolumeRate(stage);
+    const slick = survivalSlickRate(stage);
+    return Array.from({ length: COLS }, () => {
+      const roll = this.rng();
+      if (roll < volume) return VOLUME;
+      if (roll < volume + slick) return SLICK;
+      return Math.floor(this.rng() * colours);
+    });
+  }
+
+  /** Survival stage, which goes up with time survived. Always 1 on normal levels. */
+  stage(): number {
+    return this.level.survival ? survivalStage(this.elapsed) : 1;
+  }
+
+  /** Seconds between timed rows right now. In survival this tightens with the stage. */
+  currentInterval(): number {
+    return this.level.survival ? survivalInterval(this.stage()) : (this.level.dropInterval ?? 0);
+  }
+
   /** Push the wall down a row. Any new row restarts the timer. `resetPump` is for the pump drop only. */
   private addRow(resetPump: boolean): Hold[] {
-    const present = this.grid.presentTypes();
-    const types = Array.from({ length: COLS }, () => present[Math.floor(this.rng() * present.length)] ?? 0);
-    this.grid.addRowTop(types);
+    this.grid.addRowTop(this.rowTypes());
     if (resetPump) this.misses = 0;
     this.drops++;
     this.dropClock = 0;
@@ -332,19 +379,29 @@ export class Engine {
   /**
    * Advance the drop timer by `dt` seconds. When it runs out a new row is added, so a game that
    * drags on keeps getting harder. Call it while the player is aiming or a shot is in the air.
+   * Returns what happened, or null if nothing did.
    */
-  tick(dt: number): { newRow: Hold[]; lost: boolean } | null {
-    const interval = this.level.dropInterval ?? 0;
-    if (interval <= 0 || this.grid.presentTypes().length === 0) return null;
+  tick(dt: number): TickResult | null {
+    const interval = this.currentInterval();
+    if (interval <= 0) return null;
+    if (!this.level.survival && this.grid.presentTypes().length === 0) return null;
+    this.elapsed += dt;
     this.dropClock += dt;
-    if (this.dropClock < interval) return null;
-    const newRow = this.addRow(false);
-    return { newRow, lost: this.grid.lowestRow() >= LOSE_ROW };
+    let newRow: Hold[] | null = null;
+    let stage: number | null = null;
+    if (this.level.survival && this.stage() > this.lastStage) {
+      this.lastStage = this.stage();
+      stage = this.lastStage;
+      this.score += STAGE_BONUS;
+    }
+    if (this.dropClock >= this.currentInterval()) newRow = this.addRow(false);
+    if (!newRow && stage === null) return null;
+    return { newRow, lost: this.grid.lowestRow() >= LOSE_ROW, stage };
   }
 
   /** 0 right after a row, 1 when the next one is due. 0 when the level has no timer. */
   timerFraction(): number {
-    const interval = this.level.dropInterval ?? 0;
+    const interval = this.currentInterval();
     return interval > 0 ? Math.min(1, this.dropClock / interval) : 0;
   }
 
