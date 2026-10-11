@@ -5,6 +5,7 @@ import { Hold, H, SLICK, VOLUME } from '../game/grid';
 import { gradeLevel, LevelSpec, MAX_GRADE } from '../game/levels';
 import { isMutedNow, sfx, toggleMute, unlockAudio } from '../game/audio';
 import { getBest, getShake, hintSeen, markHint, recordResult, setShake } from '../game/storage';
+import { ChalkBag, chalkPuff } from '../chalkBag';
 import { makeButton, makeClimber, textureFor, txt } from '../ui';
 
 const TRACK_X = 15;
@@ -39,7 +40,8 @@ export class GameScene extends Phaser.Scene {
   private curSprite!: Phaser.GameObjects.Image;
   private nxtSprite!: Phaser.GameObjects.Image;
   private ghost!: Phaser.GameObjects.Image;
-  private barrel!: Phaser.GameObjects.Image;
+  private bag!: ChalkBag;
+  private pumpLabel!: Phaser.GameObjects.Text;
   private guide!: Phaser.GameObjects.Graphics;
   private pips!: Phaser.GameObjects.Graphics;
   private scoreText!: Phaser.GameObjects.Text;
@@ -118,7 +120,7 @@ export class GameScene extends Phaser.Scene {
     this.comboText = txt(this, LAUNCH_X, 548, '', 20, '#ff9f43').setDepth(5).setVisible(false);
     this.muteText = txt(this, WIDTH - 24, 700, isMutedNow() ? '🔇' : '🔊', 18).setInteractive({ useHandCursor: true });
     this.muteText.on('pointerup', () => this.muteText.setText(toggleMute() ? '🔇' : '🔊'));
-    txt(this, LAUNCH_X, 676, 'PUMP', 11, '#9aa6cf');
+    this.pumpLabel = txt(this, LAUNCH_X, 708, 'PUMP', 11, '#9aa6cf');
     this.pips = this.add.graphics();
 
     const pause = this.add.rectangle(WIDTH - 15, 22, 24, 30, 0x000000, 0.35).setInteractive({ useHandCursor: true });
@@ -129,9 +131,10 @@ export class GameScene extends Phaser.Scene {
   private buildLauncher(): void {
     this.guide = this.add.graphics();
     this.ghost = this.add.image(0, 0, 'hold-0').setAlpha(0.35).setVisible(false);
-    this.barrel = this.add.image(LAUNCH_X, LAUNCH_Y + 10, 'barrel').setOrigin(0.5, 1);
-    this.add.circle(LAUNCH_X, LAUNCH_Y + 10, 30, 0x3a4160).setStrokeStyle(3, 0x59627f);
-    this.curSprite = this.add.image(LAUNCH_X, LAUNCH_Y, `hold-${this.engine.cur}`);
+    // the bag's mouth sits just under the loaded hold, so the hold pokes out of it
+    this.bag = new ChalkBag(this, LAUNCH_X, LAUNCH_Y + 8);
+    this.curSprite = this.add.image(LAUNCH_X, LAUNCH_Y, `hold-${this.engine.cur}`).setDepth(7);
+    this.time.addEvent({ delay: 1300, loop: true, callback: () => this.state === 'aiming' && !this.paused && this.bag.drip() });
     this.nxtSprite = this.add.image(LAUNCH_X + 120, LAUNCH_Y + 22, `hold-${this.engine.nxt}`).setScale(0.7);
     txt(this, LAUNCH_X + 120, LAUNCH_Y - 8, 'NEXT', 11, '#9aa6cf');
     this.baseClimber = makeClimber(this, 80, 690, 1.3);
@@ -194,11 +197,12 @@ export class GameScene extends Phaser.Scene {
 
   private refreshPips(): void {
     const n = this.level.shotsPerDrop;
-    const startX = LAUNCH_X - ((n - 1) * 22) / 2;
+    const startX = LAUNCH_X + 14 - ((n - 1) * 22) / 2;
+    this.pumpLabel.setX(startX - 36);
     this.pips.clear();
     for (let i = 0; i < n; i++) {
       const used = i < this.engine.misses;
-      this.pips.fillStyle(used ? 0xe5484d : 0xf4f4f0, used ? 1 : 0.85).fillCircle(startX + i * 22, 696, 7);
+      this.pips.fillStyle(used ? 0xe5484d : 0xf4f4f0, used ? 1 : 0.85).fillCircle(startX + i * 22, 708, 6);
     }
   }
 
@@ -273,6 +277,11 @@ export class GameScene extends Phaser.Scene {
     const sprite = this.add.image(LAUNCH_X, LAUNCH_Y, `hold-${type}`).setDepth(10);
     this.flight = { ...f, type, sprite };
     this.refreshQueue();
+    // chalk puff out of the bag, and the next hold pops up into the mouth
+    chalkPuff(this, LAUNCH_X, LAUNCH_Y, Math.sin(this.aim), -Math.cos(this.aim));
+    this.bag.kick();
+    this.curSprite.setScale(0.3);
+    this.tweens.add({ targets: this.curSprite, scale: 1, duration: 200, delay: 90, ease: 'Back.easeOut' });
     this.guide.clear();
     this.ghost.setVisible(false);
     this.state = 'flying';
@@ -304,7 +313,7 @@ export class GameScene extends Phaser.Scene {
       if (left) this.aim -= 1.6 * dt;
       if (right) this.aim += 1.6 * dt;
       this.aim = Phaser.Math.Clamp(this.aim, -MAX_AIM, MAX_AIM);
-      this.barrel.setRotation(this.aim);
+      this.bag.tilt(this.aim);
       this.drawGuide();
     } else if (this.state === 'flying' && this.flight) {
       const f = this.flight;
@@ -332,6 +341,7 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: img, x: target.x, y: target.y, duration: res.placed.slid ? 260 : 60, ease: res.placed.slid ? 'Bounce.easeOut' : 'Linear' });
     if (res.placed.slid) sfx.slide();
     else sfx.land();
+    chalkPuff(this, target.x, target.y, 0, 1, 0.45, 12); // a little chalk dust where it sticks
 
     this.scoreText.setText(`Score ${this.engine.score}`);
     this.showCombo(res.combo);

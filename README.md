@@ -15,7 +15,7 @@ npm run build    # production build in dist/
 
 ## How to play
 
-- **Aim**: move the mouse or drag a finger. Arrow keys / A / D also work. A ghost hold shows where your shot will land.
+- **Aim**: move the mouse or drag a finger. Arrow keys / A / D also work. The chalk bag leans toward your aim and a ghost hold shows where your shot will land.
 - **Shoot**: release the click or tap, or press Space.
 - **Swap**: tap NEXT, or press S.
 - **Pause**: P or Esc (or the button top right). **Mute**: M. **Restart**: R.
