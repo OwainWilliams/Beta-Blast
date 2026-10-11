@@ -1,6 +1,7 @@
 // The rules of the game, with no Phaser in sight. The scene feeds it shots and
 // animates what comes back, and the balance bot plays it headlessly.
 import { BOMB, Cell, COLS, D, Grid, Hold, isColour, isObstacle, LOSE_ROW, makeHold, R, SLICK, VOLUME, WILD } from './grid';
+import { attackFor, VERSUS_RULES } from './versus';
 import { LevelSpec, mulberry32, survivalColours, survivalInterval, survivalSlickRate, survivalStage, survivalVolumeRate } from './levels';
 
 export const SPEED = 950; // px/s
@@ -35,7 +36,11 @@ export interface ShotResult {
   won: boolean;
   lost: boolean;
   leftover: Removed[]; // obstacles still on the wall when the route is sent, or swept away in survival
-  sweep: boolean; // survival: every colour was cleared, so fresh rows were added
+  sweep: boolean; // survival or versus: every colour was cleared, so fresh rows were added
+  attack: number; // versus: rows sent to the opponent
+  cancelled: number; // versus: queued rows this shot cancelled
+  incoming: Hold[] | null; // versus: rows the opponent sent that landed on this shot
+  incomingRows: number;
 }
 
 export interface TickResult {
@@ -62,11 +67,16 @@ export class Engine {
   combo = 0;
   bestCombo = 0;
   dropClock = 0; // seconds since the last row was added
+  pending = 0; // versus: rows the opponent has sent that have not landed yet
+  sent = 0;
+  received = 0;
+  private readonly queueRng: () => number; // versus: the same stream for both players
   elapsed = 0; // seconds the timer has run (survival time)
   private lastStage = 1;
 
   constructor(readonly level: LevelSpec) {
     this.rng = mulberry32(level.seed);
+    this.queueRng = mulberry32((level.seed ^ 0x5bd1e995) >>> 0);
     if (level.layout) this.loadLayout(level.layout);
     else this.generate();
     // a hand-built route may have holds hanging in mid-air
@@ -107,11 +117,35 @@ export class Engine {
   // ---------- queue ----------
 
   pickType(): number {
+    if (this.level.shared) return this.drawShared();
     const present = this.grid.presentTypes();
     if (!present.length) return 0;
     if (this.level.bombs && this.rng() < 1 / 14) return BOMB;
     if (this.level.wilds && this.rng() < 1 / 18) return WILD;
     return present[Math.floor(this.rng() * present.length)];
+  }
+
+  /**
+   * Two-player mode: draw from a stream that depends only on the seed and how many holds have been drawn,
+   * never on the board, so both players are dealt the same holds. (If a colour is already gone from your
+   * wall it is swapped for one you can use, which only affects you.)
+   */
+  private drawShared(): number {
+    const bomb = this.queueRng();
+    const wild = this.queueRng();
+    const colour = this.queueRng();
+    const present = this.grid.presentTypes();
+    if (!present.length) return 0;
+    if (this.level.bombs && bomb < 1 / 14) return BOMB;
+    if (this.level.wilds && wild < 1 / 18) return WILD;
+    const type = Math.floor(colour * this.level.colours);
+    return present.includes(type) ? type : this.replacement();
+  }
+
+  /** A colour that is still on the wall, chosen locally. Used when a queued colour has been cleared. */
+  private replacement(): number {
+    const present = this.grid.presentTypes();
+    return present.length ? present[Math.floor(this.rng() * present.length)] : 0;
   }
 
   swap(): void {
@@ -129,8 +163,9 @@ export class Engine {
   private refreshQueue(): void {
     const present = this.grid.presentTypes();
     const stale = (t: number) => isColour(t) && !present.includes(t);
-    if (stale(this.cur)) this.cur = this.pickType();
-    if (stale(this.nxt)) this.nxt = this.pickType();
+    const fresh = () => (this.level.shared ? this.replacement() : this.pickType());
+    if (stale(this.cur)) this.cur = fresh();
+    if (stale(this.nxt)) this.nxt = fresh();
   }
 
   // ---------- flight ----------
@@ -254,6 +289,10 @@ export class Engine {
       lost: false,
       leftover: [],
       sweep: false,
+      attack: 0,
+      cancelled: 0,
+      incoming: null,
+      incomingRows: 0,
     };
     const snapped = this.grid.nearestEmpty(x, y);
     if (!snapped) {
@@ -303,21 +342,53 @@ export class Engine {
         res.leftover.push({ cell: c, hold: this.grid.get(c[0], c[1])! });
         this.grid.set(c[0], c[1], null);
       }
-      if (!this.level.survival) {
+      if (!this.level.survival && !this.level.versus) {
         res.won = true;
         return res;
       }
-      // Survival never ends by clearing the wall: you get a bonus and the next three rows arrive at once.
+      // Survival and versus never end by clearing the wall: you get a bonus and the next three rows arrive at once.
       res.sweep = true;
       res.newRow = [];
       for (let i = 0; i < SWEEP_ROWS; i++) res.newRow.push(...this.addRow(false));
       this.score += SWEEP_BONUS;
     }
 
+    if (this.level.versus) this.exchangeRows(res, hit.length > 0);
     if (!hit.length && this.misses >= this.level.shotsPerDrop) res.newRow = this.addRow(true);
     if (this.grid.lowestRow() >= LOSE_ROW) res.lost = true;
     else this.refreshQueue();
     return res;
+  }
+
+  /** Two-player: send rows for this shot's connection, cancel rows queued against you, and let the rest land when due. */
+  private exchangeRows(res: ShotResult, popped: boolean): void {
+    if (popped) {
+      const attack = attackFor(res.popped.length, res.fallen.length, res.sweep);
+      const cancel = VERSUS_RULES.cancelWithPops ? Math.min(this.pending, attack) : 0;
+      this.pending -= cancel;
+      res.cancelled = cancel;
+      res.attack = attack - cancel;
+      this.sent += res.attack;
+    }
+    if (this.pending > 0 && (!popped || !VERSUS_RULES.deferUntilMiss)) {
+      res.incomingRows = this.pending;
+      res.incoming = [];
+      for (let i = 0; i < this.pending; i++) res.incoming.push(...this.addRow(false));
+      this.received += this.pending;
+      this.pending = 0;
+    }
+  }
+
+  /** The opponent sent rows. They wait in the queue until they land (see exchangeRows). */
+  receive(rows: number): void {
+    this.pending += rows;
+  }
+
+  /** The wall as short strings, one per row, for the opponent's mini view. */
+  snapshot(): string[] {
+    const rows = this.grid.rows.map((row) => row.map((h) => (h ? String(h.type) : '.')).join(''));
+    while (rows.length && /^\.*$/.test(rows[rows.length - 1])) rows.pop();
+    return rows;
   }
 
   /** Each obstacle touching the popped holds takes one hit. Returns those that broke. */
@@ -343,7 +414,8 @@ export class Engine {
   private rowTypes(): number[] {
     if (!this.level.survival) {
       const present = this.grid.presentTypes();
-      return Array.from({ length: COLS }, () => present[Math.floor(this.rng() * present.length)] ?? 0);
+      // with nothing left on the wall (after a sweep) any of the level's colours will do
+      return Array.from({ length: COLS }, () => (present.length ? present[Math.floor(this.rng() * present.length)] : Math.floor(this.rng() * this.level.colours)));
     }
     const stage = this.stage();
     const colours = survivalColours(stage);

@@ -12,6 +12,8 @@ export interface LevelSpec {
   volumeRate?: number; // chance a generated cell is a volume
   slickRate?: number; // chance a generated cell is a slick hold
   daily?: boolean;
+  versus?: boolean; // two players: pops send rows to the opponent
+  shared?: boolean; // both players get the same stream of holds
   survival?: boolean; // no win: the wall keeps coming and the score is how long you last
   custom?: boolean;
   layout?: number[][]; // hand-built route: hold type per cell, -1 = empty
@@ -103,3 +105,23 @@ export const survivalInterval = (stage: number): number => Math.max(SURVIVAL_MIN
 export const survivalColours = (stage: number): number => Math.min(5, 3 + Math.floor((stage - 1) / 2));
 export const survivalVolumeRate = (stage: number): number => (stage >= 4 ? Math.min(0.12, 0.03 * (stage - 3)) : 0);
 export const survivalSlickRate = (stage: number): number => (stage >= 6 ? Math.min(0.08, 0.02 * (stage - 5)) : 0);
+
+/** The two-player mode. Both players build the level from the same seed, so they start on the same wall with the same holds. */
+export function versusLevel(seed: number): LevelSpec {
+  return {
+    id: 'versus',
+    label: 'Versus',
+    grade: 3,
+    seed,
+    colours: 4,
+    rows: 5,
+    shotsPerDrop: 7,
+    dropInterval: 0,
+    bombs: true,
+    wilds: true,
+    volumeRate: 0,
+    slickRate: 0,
+    versus: true,
+    shared: true,
+  };
+}
