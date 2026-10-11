@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { GRID_X, HEIGHT, HOLD_COLOURS, LAUNCH_X, LAUNCH_Y, LOSE_Y, WIDTH } from '../config';
 import { Engine, Flight, MAX_AIM, Removed, SPEED, ShotResult } from '../game/engine';
-import { Hold, H, SLICK, VOLUME } from '../game/grid';
+import { BOMB, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
 import { gradeLevel, LevelSpec, MAX_GRADE } from '../game/levels';
 import { isMutedNow, sfx, toggleMute, unlockAudio } from '../game/audio';
 import { getBest, getShake, hintSeen, markHint, recordResult, setShake } from '../game/storage';
@@ -92,6 +92,7 @@ export class GameScene extends Phaser.Scene {
     this.updateProgress(false);
 
     this.hint('aim', 'Aim with the mouse or your finger, then release to shoot');
+    this.refreshQueue(); // queues the bomb / mega jug tips if one is already loaded
     const kinds = new Set(this.engine.grid.cells().map(([r, c]) => this.engine.grid.get(r, c)!.type));
     if (kinds.has(VOLUME)) this.hint('volume', 'Grey volumes crack when you pop holds next to them. Two pops breaks one');
     if (kinds.has(SLICK)) this.hint('slick', 'Teal slick holds are greasy: shots that land beside one slide down');
@@ -184,8 +185,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshQueue(): void {
-    this.curSprite.setTexture(`hold-${this.engine.cur}`);
-    this.nxtSprite.setTexture(`hold-${this.engine.nxt}`);
+    const { cur, nxt } = this.engine;
+    this.curSprite.setTexture(`hold-${cur}`);
+    this.nxtSprite.setTexture(`hold-${nxt}`);
+    if (cur === WILD || nxt === WILD) this.hint('wild', 'Mega jug! It turns into whichever colour pops the most where it lands');
+    if (cur === BOMB || nxt === BOMB) this.hint('bomb', 'Chalk bomb! It clears every hold it touches');
   }
 
   private swap(): void {
@@ -301,7 +305,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const { x, y } = this.pos(cell[0], cell[1]);
-    this.ghost.setTexture(`hold-${this.engine.cur}`).setPosition(x, y).setVisible(true);
+    const type = this.engine.cur === WILD ? this.engine.resolveWild(cell) : this.engine.cur;
+    this.ghost.setTexture(`hold-${type}`).setPosition(x, y).setVisible(true);
   }
 
   update(_time: number, delta: number): void {
@@ -338,9 +343,20 @@ export class GameScene extends Phaser.Scene {
     const img = this.makeSprite(res.placed.hold, r, c);
     const target = this.pos(r, c);
     img.setPosition(GRID_X + f.x, f.y);
-    this.tweens.add({ targets: img, x: target.x, y: target.y, duration: res.placed.slid ? 260 : 60, ease: res.placed.slid ? 'Bounce.easeOut' : 'Linear' });
+    this.tweens.add({
+      targets: img,
+      x: target.x,
+      y: target.y,
+      duration: res.placed.slid ? 260 : 60,
+      ease: res.placed.slid ? 'Bounce.easeOut' : 'Linear',
+      onComplete: () => {
+        // a hold that pops is already on its way out, so only the ones that stay get to settle
+        if (!res.popped.length) this.settle(img, r, c, !res.newRow);
+      },
+    });
     if (res.placed.slid) sfx.slide();
     else sfx.land();
+    if (res.placed.wild) this.revealWild(target.x, target.y, res.placed.hold.type);
     chalkPuff(this, target.x, target.y, 0, 1, 0.45, 12); // a little chalk dust where it sticks
 
     this.scoreText.setText(`Score ${this.engine.score}`);
@@ -369,6 +385,52 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(300, () => {
       if (this.state === 'resolving') this.state = 'aiming';
     });
+  }
+
+  /** A mega jug showing its true colour: a ring of coloured flecks. */
+  private revealWild(x: number, y: number, type: number): void {
+    sfx.wild();
+    for (let i = 0; i < 10; i++) {
+      const a = (Math.PI * 2 * i) / 10;
+      const fleck = this.add.image(x, y, 'chalk').setTint(HOLD_COLOURS[type]).setDepth(40).setScale(1.2);
+      this.tweens.add({
+        targets: fleck,
+        x: x + Math.cos(a) * 42,
+        y: y + Math.sin(a) * 42,
+        alpha: 0,
+        scale: 0.3,
+        duration: 480,
+        ease: 'Cubic.easeOut',
+        onComplete: () => fleck.destroy(),
+      });
+    }
+  }
+
+  /** A landed hold squashes on impact and springs back, and its neighbours get a small nudge. */
+  private settle(img: Phaser.GameObjects.Image, r: number, c: number, ripple: boolean): void {
+    if (!img.active) return;
+    this.tweens.add({
+      targets: img,
+      scaleX: 1.2,
+      scaleY: 0.82,
+      duration: 60,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        if (!img.active) return;
+        this.tweens.add({ targets: img, scaleX: 1, scaleY: 1, duration: 320, ease: 'Elastic.easeOut', easeParams: [1, 0.5] });
+      },
+    });
+    if (!ripple) return;
+    const grid = this.engine.grid;
+    for (const [nr, nc] of grid.neighbors(r, c)) {
+      const hold = grid.get(nr, nc);
+      const s = hold && this.sprites.get(hold);
+      if (!s || s === img) continue;
+      const dx = s.x - img.x;
+      const dy = s.y - img.y;
+      const len = Math.hypot(dx, dy) || 1;
+      this.tweens.add({ targets: s, x: s.x + (dx / len) * 3.5, y: s.y + (dy / len) * 3.5, duration: 70, yoyo: true, ease: 'Sine.easeOut' });
+    }
   }
 
   private celebratePop(res: ShotResult, at: { x: number; y: number }): void {
@@ -448,6 +510,15 @@ export class GameScene extends Phaser.Scene {
       ({ bonus, flash } = this.engine.finishWin());
       this.scoreText.setText(`Score ${this.engine.score}`);
       this.tweens.add({ targets: this.trackClimber, y: TRACK_TOP, duration: 500 });
+      // the climber tops out in a cloud of chalk, and the bag sends a big puff straight up
+      this.time.delayedCall(500, () => {
+        chalkPuff(this, TRACK_X + 6, TRACK_TOP - 4, 1, -0.3, 0.6, 90);
+        const top = txt(this, TRACK_X + 46, TRACK_TOP + 12, 'TOP!', 16, '#ffd166').setDepth(90).setScale(0.2);
+        this.tweens.add({ targets: top, scale: 1.2, duration: 250, ease: 'Back.easeOut' });
+        this.tweens.add({ targets: top, alpha: 0, duration: 400, delay: 1100, onComplete: () => top.destroy() });
+      });
+      chalkPuff(this, LAUNCH_X, LAUNCH_Y, 0, -1, 1.8, 90);
+      this.bag.kick();
       this.tweens.add({ targets: this.baseClimber, y: 650, duration: 220, yoyo: true, repeat: 4 });
       sfx.win();
       this.sendMoment(flash);

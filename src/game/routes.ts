@@ -1,5 +1,5 @@
 // Share codes for hand-built routes: "CP1-" + base64url of
-//   [rows, pumpLimit | bombs<<4, ...two cells per byte, checksum]
+//   [rows, pumpLimit | bombs<<4 | wilds<<5, ...two cells per byte, checksum]
 // A cell is 0-4 (colours), 6 (volume), 7 (slick) or 15 (empty).
 import { COLS, isColour } from './grid';
 import { hashString, LevelSpec } from './levels';
@@ -15,6 +15,7 @@ export interface Route {
   layout: number[][]; // hold type per cell, -1 = empty. Row 0 is the top, full width.
   shotsPerDrop: number;
   bombs: boolean;
+  wilds: boolean;
 }
 
 export const rowLen = (r: number): number => (r % 2 === 0 ? COLS : COLS - 1);
@@ -38,7 +39,7 @@ export function encodeRoute(route: Route): string {
     }
   }
   if (nibbles.length % 2) nibbles.push(EMPTY);
-  const bytes = [rows, (route.shotsPerDrop & 0xf) | (route.bombs ? 0x10 : 0)];
+  const bytes = [rows, (route.shotsPerDrop & 0xf) | (route.bombs ? 0x10 : 0) | (route.wilds ? 0x20 : 0)];
   for (let i = 0; i < nibbles.length; i += 2) bytes.push((nibbles[i] << 4) | nibbles[i + 1]);
   bytes.push(checksum(bytes));
   const b64 = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -58,6 +59,7 @@ export function decodeRoute(code: string): Route | null {
     for (let r = 0; r < rows; r++) cells += rowLen(r);
     if (bytes.length !== 2 + Math.ceil(cells / 2) + 1) return null;
     if (checksum(bytes.slice(0, -1)) !== bytes[bytes.length - 1]) return null;
+    if (bytes[1] & 0xc0) return null; // reserved bits
     const shotsPerDrop = bytes[1] & 0xf;
     if (shotsPerDrop < MIN_PUMP || shotsPerDrop > MAX_PUMP) return null;
 
@@ -75,7 +77,7 @@ export function decodeRoute(code: string): Route | null {
       layout.push(row);
     }
     if (!layout.some((row) => row.some(isColour))) return null; // nothing to pop
-    return { layout, shotsPerDrop, bombs: !!(bytes[1] & 0x10) };
+    return { layout, shotsPerDrop, bombs: !!(bytes[1] & 0x10), wilds: !!(bytes[1] & 0x20) };
   } catch {
     return null;
   }
@@ -99,6 +101,7 @@ export function routeLevel(route: Route, code: string): LevelSpec {
     rows: 0,
     shotsPerDrop: route.shotsPerDrop,
     bombs: route.bombs,
+    wilds: route.wilds,
     custom: true,
     layout: route.layout,
     code,

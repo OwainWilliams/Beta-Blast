@@ -1,6 +1,6 @@
 // The rules of the game, with no Phaser in sight. The scene feeds it shots and
 // animates what comes back, and the balance bot plays it headlessly.
-import { BOMB, Cell, COLS, D, Grid, Hold, isColour, isObstacle, LOSE_ROW, makeHold, R, SLICK, VOLUME } from './grid';
+import { BOMB, Cell, COLS, D, Grid, Hold, isColour, isObstacle, LOSE_ROW, makeHold, R, SLICK, VOLUME, WILD } from './grid';
 import { LevelSpec, mulberry32 } from './levels';
 
 export const SPEED = 950; // px/s
@@ -23,7 +23,7 @@ export interface Removed {
 }
 
 export interface ShotResult {
-  placed: { cell: Cell; hold: Hold; slid: boolean } | null;
+  placed: { cell: Cell; hold: Hold; slid: boolean; wild: boolean } | null;
   popped: Removed[];
   fallen: Removed[];
   cracked: Hold[]; // obstacles damaged but still standing
@@ -96,6 +96,7 @@ export class Engine {
     const present = this.grid.presentTypes();
     if (!present.length) return 0;
     if (this.level.bombs && this.rng() < 1 / 14) return BOMB;
+    if (this.level.wilds && this.rng() < 1 / 18) return WILD;
     return present[Math.floor(this.rng() * present.length)];
   }
 
@@ -174,6 +175,33 @@ export class Engine {
     return cell ? this.slide(cell) : null;
   }
 
+  /**
+   * The colour a mega jug turns into at `cell`: the one that makes the biggest group,
+   * or failing a match, the colour it is touching most so it joins that cluster.
+   */
+  resolveWild(cell: Cell): number {
+    const [r, c] = cell;
+    const touching = new Map<number, number>();
+    for (const [nr, nc] of this.grid.neighbors(r, c)) {
+      const h = this.grid.get(nr, nc);
+      if (h && isColour(h.type)) touching.set(h.type, (touching.get(h.type) ?? 0) + 1);
+    }
+    let best = this.grid.presentTypes()[0] ?? 0;
+    let bestSize = -1;
+    let bestTouch = -1;
+    for (const [type, n] of touching) {
+      this.grid.set(r, c, { type });
+      const size = this.grid.findMatches(r, c).length;
+      this.grid.set(r, c, null);
+      if (size > bestSize || (size === bestSize && n > bestTouch)) {
+        best = type;
+        bestSize = size;
+        bestTouch = n;
+      }
+    }
+    return best;
+  }
+
   /** Next to a slick hold the ball slides off, down and away, if there is room. */
   private slide(cell: Cell): Cell {
     const near = this.grid.neighbors(cell[0], cell[1]);
@@ -218,9 +246,9 @@ export class Engine {
       return res;
     }
     const cell = this.slide(snapped);
-    const hold = makeHold(type);
+    const hold = makeHold(type === WILD ? this.resolveWild(cell) : type);
     this.grid.set(cell[0], cell[1], hold);
-    res.placed = { cell, hold, slid: cell !== snapped };
+    res.placed = { cell, hold, slid: cell !== snapped, wild: type === WILD };
 
     let hit: Cell[] = [];
     if (type === BOMB) hit = this.grid.blast(cell[0], cell[1]);

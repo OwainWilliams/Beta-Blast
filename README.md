@@ -30,6 +30,7 @@ Each colour of hold (jug, crimp, sloper, pinch, pocket) also has its own shape, 
 | Hold | Behaviour |
 |---|---|
 | Chalk bomb (V2+, a white ball you shoot) | Clears itself and every hold touching it, obstacles included |
+| Mega jug (V1+, a rainbow ball you shoot) | A wildcard: it turns into whichever colour pops the most where it lands. The ghost preview shows the colour it will become |
 | Volume (grey block, V4+) | Takes two pops next to it to break. Can't be matched |
 | Slick (teal, V7+) | A shot that lands beside one slides down and away |
 
@@ -39,7 +40,7 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 
 **Modes**: V0 to V10 grades, and a **Daily Boulder** that is the same seeded route for everyone each day. Best scores and sends are saved in local storage.
 
-**Route Setter**: build your own route (10 rows, all hold types, pump limit, bombs on/off), test it, and share it as a link or code. Anyone opening `?route=CODE` plays it straight away, or use *Play a code* in the menu.
+**Route Setter**: build your own route (10 rows, all hold types, pump limit, bombs and mega jugs on/off), test it, and share it as a link or code. Anyone opening `?route=CODE` plays it straight away, or use *Play a code* in the menu.
 
 ## Balance
 

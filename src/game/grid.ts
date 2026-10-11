@@ -11,6 +11,7 @@ export const LOSE_ROW = 12;
 export const BOMB = 5; // chalk bomb (only ever shot, never on the wall)
 export const VOLUME = 6; // big obstacle, takes 2 nearby pops to break
 export const SLICK = 7; // greasy obstacle, shots that land next to it slide down
+export const WILD = 8; // mega jug: a shot that becomes whichever colour pops the most (never stored on the wall)
 
 export const isColour = (type: number): boolean => type >= 0 && type < 5;
 export const isObstacle = (type: number): boolean => type === VOLUME || type === SLICK;
