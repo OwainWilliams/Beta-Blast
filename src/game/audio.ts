@@ -39,9 +39,12 @@ export const sfx = {
   shoot: () => tone(300, 0.1, 'triangle', 0.1, 600),
   bounce: () => tone(500, 0.05, 'square', 0.04),
   land: () => tone(160, 0.08, 'sine', 0.12, 100),
-  pop: (n: number) => {
-    for (let i = 0; i < Math.min(n, 6); i++) tone(420 + i * 90, 0.12, 'triangle', 0.1, undefined, i * 0.04);
+  pop: (n: number, combo = 1) => {
+    const base = 420 * 2 ** (Math.min(combo - 1, 6) / 12);
+    for (let i = 0; i < Math.min(n, 6); i++) tone(base + i * 90, 0.12, 'triangle', 0.1, undefined, i * 0.04);
   },
+  crack: () => tone(220, 0.1, 'square', 0.08, 120),
+  slide: () => tone(700, 0.25, 'sine', 0.06, 200),
   fall: () => tone(500, 0.4, 'sawtooth', 0.05, 90),
   drop: () => tone(110, 0.3, 'square', 0.1, 60),
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.25, 'triangle', 0.12, undefined, i * 0.12)),

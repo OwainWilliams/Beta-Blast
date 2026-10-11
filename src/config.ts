@@ -1,9 +1,9 @@
-import { R, H } from './game/grid';
+import { H, LOSE_ROW, R } from './game/grid';
 
 export const WIDTH = 540;
 export const HEIGHT = 720;
 export const GRID_X = 30;
-export const LOSE_ROW = 12;
+export { LOSE_ROW };
 export const LAUNCH_X = GRID_X + 240;
 export const LAUNCH_Y = 640;
 export const LOSE_Y = R + LOSE_ROW * H;

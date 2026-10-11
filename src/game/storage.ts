@@ -4,16 +4,18 @@ interface Save {
   best: Record<string, number>;
   sent: Record<string, boolean>;
   muted: boolean;
+  shake: boolean;
+  hints: Record<string, boolean>;
 }
 
 function load(): Save {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { best: {}, sent: {}, muted: false, ...JSON.parse(raw) };
+    if (raw) return { best: {}, sent: {}, muted: false, shake: true, hints: {}, ...JSON.parse(raw) };
   } catch {
     /* storage unavailable */
   }
-  return { best: {}, sent: {}, muted: false };
+  return { best: {}, sent: {}, muted: false, shake: true, hints: {} };
 }
 
 function save(s: Save): void {
@@ -36,5 +38,17 @@ export function recordResult(id: string, score: number, sent: boolean): void {
   const s = load();
   s.best[id] = Math.max(s.best[id] ?? 0, score);
   if (sent) s.sent[id] = true;
+  save(s);
+}
+
+export const getShake = (): boolean => load().shake;
+export function setShake(shake: boolean): void {
+  save({ ...load(), shake });
+}
+
+export const hintSeen = (id: string): boolean => !!load().hints[id];
+export function markHint(id: string): void {
+  const s = load();
+  s.hints[id] = true;
   save(s);
 }

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { BOMB, D } from '../game/grid';
+import { BOMB, D, SLICK, VOLUME } from '../game/grid';
+import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
 import { HOLD_COLOURS, WIDTH, HEIGHT, GRID_X } from '../config';
 
 const shade = (c: number, amt: number) =>
@@ -16,13 +17,20 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     HOLD_COLOURS.forEach((col, i) => this.makeHold(i, col));
     this.makeBomb();
+    this.makeVolume(false);
+    this.makeVolume(true);
+    this.makeSlick();
     this.makeWall();
     this.makeBarrel();
     const g = this.add.graphics();
     g.fillStyle(0xffffff, 1).fillCircle(4, 4, 4);
     g.generateTexture('chalk', 8, 8);
     g.destroy();
-    this.scene.start('Menu');
+    // a shared link like ?route=CP1-... goes straight into that route
+    const code = codeFromInput(window.location.search);
+    const route = code ? decodeRoute(code) : null;
+    if (code && route) this.scene.start('Game', { level: routeLevel(route, code) });
+    else this.scene.start('Menu');
   }
 
   private makeHold(type: number, col: number): void {
@@ -78,6 +86,37 @@ export class BootScene extends Phaser.Scene {
     g.lineStyle(3, 0x6b7280).beginPath();
     g.moveTo(c - 8, c - 2).lineTo(c, c + 6).lineTo(c + 8, c - 6).strokePath(); // "C"-ish chalk scribble
     g.generateTexture(`hold-${BOMB}`, D, D);
+    g.destroy();
+  }
+
+  private makeVolume(cracked: boolean): void {
+    const g = this.add.graphics();
+    const c = D / 2;
+    g.fillStyle(0x4a5368).fillRoundedRect(2, 3, 44, 44, 9);
+    g.fillStyle(0x9aa5ba).fillRoundedRect(2, 1, 44, 43, 9);
+    g.fillStyle(0xc4cddd).fillTriangle(4, 6, 40, 4, 4, 38); // lit face
+    g.fillStyle(0x7a869c).fillTriangle(44, 8, 44, 42, 10, 42); // shaded face
+    g.fillStyle(0x3b4256).fillCircle(c, c - 1, 6); // T-nut bolt
+    g.fillStyle(0xdfe6f2, 0.8).fillCircle(c - 2, c - 3, 2);
+    if (cracked) {
+      g.lineStyle(3, 0x20242f, 1).beginPath();
+      g.moveTo(12, 6).lineTo(20, 18).lineTo(15, 26).lineTo(27, 34).lineTo(24, 44).strokePath();
+      g.lineStyle(2, 0x20242f, 1).beginPath().moveTo(20, 18).lineTo(34, 14).strokePath();
+    }
+    g.generateTexture(cracked ? 'hold-6c' : `hold-${VOLUME}`, D, D);
+    g.destroy();
+  }
+
+  private makeSlick(): void {
+    const g = this.add.graphics();
+    const c = D / 2;
+    g.fillStyle(0x0e6f6a).fillCircle(c, c + 2, 22);
+    g.fillStyle(0x23b5ab).fillCircle(c, c, 21);
+    g.fillStyle(0x7ae6dc, 0.9).fillEllipse(c - 5, c - 8, 22, 9); // gloss
+    g.fillStyle(0xffffff, 0.85).fillEllipse(c - 9, c - 10, 8, 4);
+    g.fillStyle(0x0e6f6a, 0.9).fillTriangle(c + 8, c + 5, c + 14, c + 5, c + 11, c + 13); // drip
+    g.fillCircle(c + 11, c + 14, 3);
+    g.generateTexture(`hold-${SLICK}`, D, D);
     g.destroy();
   }
 
