@@ -9,7 +9,7 @@ function sample() {
   layout[1][3] = 6;
   layout[2][5] = 7;
   layout[3][0] = 2;
-  return { layout, shotsPerDrop: 5, bombs: true };
+  return { layout, shotsPerDrop: 5, bombs: true, wilds: true };
 }
 
 describe('route codes', () => {
@@ -18,6 +18,7 @@ describe('route codes', () => {
     const back = decodeRoute(encodeRoute(route))!;
     expect(back.shotsPerDrop).toBe(5);
     expect(back.bombs).toBe(true);
+    expect(back.wilds).toBe(true);
     // rows after the last used one are trimmed
     expect(back.layout).toHaveLength(4);
     expect(back.layout).toEqual(route.layout.slice(0, 4));
@@ -40,10 +41,30 @@ describe('route codes', () => {
     expect(decodeRoute(code.slice(0, -4))).toBeNull();
   });
 
+  it('keeps bombs and mega jugs independent', () => {
+    const route = { ...sample(), bombs: false, wilds: true };
+    expect(decodeRoute(encodeRoute(route))).toMatchObject({ bombs: false, wilds: true });
+    expect(decodeRoute(encodeRoute({ ...route, bombs: true, wilds: false }))).toMatchObject({ bombs: true, wilds: false });
+  });
+
+  it('rejects reserved flag bits', () => {
+    const b64decode = (s: string) => Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (ch) => ch.charCodeAt(0));
+    const reencode = (bytes: number[]) => {
+      const body = bytes.slice(0, -1);
+      body.push(body.reduce((a, b) => (a * 31 + b + 1) & 0xff, 7)); // fresh checksum
+      return 'CP1-' + btoa(String.fromCharCode(...body)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    };
+    const bytes = b64decode(encodeRoute(sample()).slice(4));
+    expect(decodeRoute(reencode([...bytes]))).not.toBeNull(); // control: the re-encoding itself is valid
+    const reserved = [...bytes];
+    reserved[1] |= 0x40;
+    expect(decodeRoute(reencode(reserved))).toBeNull();
+  });
+
   it('rejects a route with nothing to pop', () => {
     const layout = emptyLayout();
     layout[0][0] = 6; // only an obstacle
-    expect(decodeRoute(encodeRoute({ layout, shotsPerDrop: 6, bombs: false }))).toBeNull();
+    expect(decodeRoute(encodeRoute({ layout, shotsPerDrop: 6, bombs: false, wilds: false }))).toBeNull();
   });
 
   it('accepts a bare code or a link', () => {

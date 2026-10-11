@@ -7,6 +7,7 @@ export interface LevelSpec {
   rows: number;
   shotsPerDrop: number; // misses before the wall drops a row ("pump")
   bombs: boolean;
+  wilds?: boolean; // mega jug shots
   volumeRate?: number; // chance a generated cell is a volume
   slickRate?: number; // chance a generated cell is a slick hold
   daily?: boolean;
@@ -40,6 +41,7 @@ export function gradeLevel(grade: number, seed = 1000 + grade * 7919): LevelSpec
     rows: 4 + Math.min(grade, 6),
     shotsPerDrop: PUMP_LIMIT[Math.min(grade, MAX_GRADE)],
     bombs: grade >= 2,
+    wilds: grade >= 1,
     volumeRate: grade >= 4 ? Math.min(0.12, 0.025 * (grade - 3)) : 0,
     slickRate: grade >= 7 ? Math.min(0.08, 0.02 * (grade - 6)) : 0,
   };

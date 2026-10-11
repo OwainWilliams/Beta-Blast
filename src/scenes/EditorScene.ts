@@ -15,11 +15,13 @@ export class EditorScene extends Phaser.Scene {
   private tool = 0;
   private pump = 6;
   private bombs = true;
+  private wilds = true;
   private selection!: Phaser.GameObjects.Rectangle;
   private info!: Phaser.GameObjects.Text;
   private status!: Phaser.GameObjects.Text;
   private pumpText!: Phaser.GameObjects.Text;
   private bombBtn!: Phaser.GameObjects.Container;
+  private wildBtn!: Phaser.GameObjects.Container;
   private pendingCode?: string;
 
   constructor() {
@@ -36,6 +38,7 @@ export class EditorScene extends Phaser.Scene {
     this.tool = 0;
     this.pump = 6;
     this.bombs = true;
+    this.wilds = true;
     for (let r = 0; r < MAX_EDIT_ROWS; r++) this.grid.ensureRow(r);
 
     this.add.image(0, 0, 'wall').setOrigin(0);
@@ -59,13 +62,15 @@ export class EditorScene extends Phaser.Scene {
     this.info = txt(this, WIDTH / 2, 538, '', 14, '#9aa6cf', false);
     this.status = txt(this, WIDTH / 2, 700, '', 14, '#ffd166', false);
 
-    // pump limit and bombs
-    txt(this, 110, 574, 'Pump limit', 16);
-    makeButton(this, 205, 574, 36, 34, '–', () => this.setPump(this.pump - 1), 0x59627f);
-    this.pumpText = txt(this, 245, 574, String(this.pump), 20);
-    makeButton(this, 285, 574, 36, 34, '+', () => this.setPump(this.pump + 1), 0x59627f);
-    this.bombBtn = makeButton(this, 435, 574, 150, 34, '', () => this.toggleBombs(), 0x59627f, 15);
+    // pump limit, bombs and mega jugs
+    txt(this, 58, 574, 'Pump', 16);
+    makeButton(this, 122, 574, 34, 34, '–', () => this.setPump(this.pump - 1), 0x59627f);
+    this.pumpText = txt(this, 158, 574, String(this.pump), 20);
+    makeButton(this, 194, 574, 34, 34, '+', () => this.setPump(this.pump + 1), 0x59627f);
+    this.bombBtn = makeButton(this, 313, 574, 118, 34, '', () => this.toggleBombs(), 0x59627f, 13);
+    this.wildBtn = makeButton(this, 445, 574, 118, 34, '', () => this.toggleWilds(), 0x59627f, 13);
     this.toggleBombs(true);
+    this.toggleWilds(true);
 
     makeButton(this, 105, 624, 150, 46, 'Test it', () => this.test(), 0x2e8b57);
     makeButton(this, 270, 624, 150, 46, 'Copy link', () => void this.copyLink(), 0x2f6fdd);
@@ -110,7 +115,12 @@ export class EditorScene extends Phaser.Scene {
 
   private toggleBombs(init = false): void {
     if (!init) this.bombs = !this.bombs;
-    (this.bombBtn.list[1] as Phaser.GameObjects.Text).setText(`Chalk bombs: ${this.bombs ? 'on' : 'off'}`);
+    (this.bombBtn.list[1] as Phaser.GameObjects.Text).setText(`Bombs: ${this.bombs ? 'on' : 'off'}`);
+  }
+
+  private toggleWilds(init = false): void {
+    if (!init) this.wilds = !this.wilds;
+    (this.wildBtn.list[1] as Phaser.GameObjects.Text).setText(`Mega jugs: ${this.wilds ? 'on' : 'off'}`);
   }
 
   // ---------- editing ----------
@@ -163,7 +173,7 @@ export class EditorScene extends Phaser.Scene {
   private toRoute(): Route {
     const layout = emptyLayout();
     for (const [r, c] of this.grid.cells()) layout[r][c] = this.grid.get(r, c)!.type;
-    return { layout, shotsPerDrop: this.pump, bombs: this.bombs };
+    return { layout, shotsPerDrop: this.pump, bombs: this.bombs, wilds: this.wilds };
   }
 
   /** The route as a code, or null (with a message) if it can't be played. */
@@ -222,7 +232,9 @@ export class EditorScene extends Phaser.Scene {
     );
     this.setPump(route.shotsPerDrop);
     this.bombs = route.bombs;
+    this.wilds = route.wilds;
     this.toggleBombs(true);
+    this.toggleWilds(true);
     this.refreshInfo();
     this.say(message);
   }

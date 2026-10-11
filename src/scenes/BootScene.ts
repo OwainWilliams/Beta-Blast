@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BOMB, D, SLICK, VOLUME } from '../game/grid';
+import { BOMB, D, SLICK, VOLUME, WILD } from '../game/grid';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
 import { HOLD_COLOURS, WIDTH, HEIGHT, GRID_X } from '../config';
 
@@ -17,6 +17,7 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     HOLD_COLOURS.forEach((col, i) => this.makeHold(i, col));
     this.makeBomb();
+    this.makeWild();
     this.makeVolume(false);
     this.makeVolume(true);
     this.makeSlick();
@@ -90,6 +91,23 @@ export class BootScene extends Phaser.Scene {
     g.lineStyle(3, 0x6b7280).beginPath();
     g.moveTo(c - 8, c - 2).lineTo(c, c + 6).lineTo(c + 8, c - 6).strokePath(); // "C"-ish chalk scribble
     g.generateTexture(`hold-${BOMB}`, D, D);
+    g.destroy();
+  }
+
+  // Mega jug: a big jug striped in every route colour, because it can become any of them.
+  private makeWild(): void {
+    const g = this.add.graphics();
+    const c = D / 2;
+    g.fillStyle(0x20242f).fillCircle(c, c + 2, 22);
+    HOLD_COLOURS.forEach((col, i) => {
+      g.fillStyle(col);
+      g.slice(c, c, 21, Phaser.Math.DegToRad(-90 + i * 72), Phaser.Math.DegToRad(-90 + (i + 1) * 72), false);
+      g.fillPath();
+    });
+    g.fillStyle(0x20242f, 0.55).fillEllipse(c, c + 3, 22, 9); // jug slot
+    g.fillStyle(0xffffff, 0.5).fillEllipse(c - 7, c - 11, 12, 7);
+    g.lineStyle(2, 0x20242f, 1).strokeCircle(c, c, 21);
+    g.generateTexture(`hold-${WILD}`, D, D);
     g.destroy();
   }
 

@@ -5,7 +5,7 @@ import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { EditorScene } from './scenes/EditorScene';
 
-new Phaser.Game({
+const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
   width: WIDTH,
@@ -14,3 +14,6 @@ new Phaser.Game({
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   scene: [BootScene, MenuScene, GameScene, EditorScene],
 });
+
+// Dev-only handle so browser tests can inspect the running game.
+if (import.meta.env.DEV) (window as unknown as { __game: Phaser.Game }).__game = game;

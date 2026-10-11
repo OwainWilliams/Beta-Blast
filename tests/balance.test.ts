@@ -3,7 +3,7 @@
 // instead of a random one, a rough stand-in for human mistakes.
 import { describe, expect, it } from 'vitest';
 import { Engine, MAX_AIM } from '../src/game/engine';
-import { BOMB } from '../src/game/grid';
+import { BOMB, WILD } from '../src/game/grid';
 import { gradeLevel, mulberry32, MAX_GRADE } from '../src/game/levels';
 
 const ANGLES = Array.from({ length: 27 }, (_, i) => -1.3 + i * 0.1);
@@ -13,7 +13,8 @@ function scoreShot(e: Engine, aim: number): number {
   const cell = e.preview(end.x, end.y);
   if (!cell) return -100;
   const [r, c] = cell;
-  e.grid.set(r, c, { type: e.cur });
+  const type = e.cur === WILD ? e.resolveWild(cell) : e.cur;
+  e.grid.set(r, c, { type });
   const size = e.cur === BOMB ? e.grid.blast(r, c).length : e.grid.findMatches(r, c).length;
   e.grid.set(r, c, null);
   return size >= 3 ? 10 * size : -r; // prefer popping, otherwise stay high
