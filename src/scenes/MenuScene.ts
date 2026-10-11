@@ -59,8 +59,9 @@ export class MenuScene extends Phaser.Scene {
       txt(this, x, y + 34, `best ${getBest(level.id)}`, 12, '#9aa6cf', false);
     }
 
-    makeButton(this, 140, 608, 220, 46, 'Route Setter', () => this.scene.start('Editor'), 0x7a4fd0, 20);
-    makeButton(this, 400, 608, 220, 46, 'Play a code', () => this.playCode(), 0x7a4fd0, 20);
+    makeButton(this, 95, 608, 160, 46, 'Route Setter', () => this.scene.start('Editor'), 0x7a4fd0, 17);
+    makeButton(this, 270, 608, 160, 46, 'Play a code', () => this.playCode(), 0x7a4fd0, 17);
+    makeButton(this, 445, 608, 160, 46, '2 Player', () => this.scene.start('Lobby'), 0x2e8b57, 19);
 
     const help = ['Aim with mouse / touch, release to shoot. Arrows + Space work too.', 'Tap NEXT or press S to swap. P pauses.'];
     help.forEach((line, i) => txt(this, WIDTH / 2, 650 + i * 18, line, 13, '#9aa6cf', false));

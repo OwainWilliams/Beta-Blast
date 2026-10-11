@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BOMB, D, SLICK, VOLUME, WILD } from '../game/grid';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
+import { codeFromInput as joinCodeFromInput } from '../net/codes';
 import { HOLD_COLOURS, WIDTH, HEIGHT, GRID_X } from '../config';
 
 const shade = (c: number, amt: number) =>
@@ -34,7 +35,9 @@ export class BootScene extends Phaser.Scene {
     // a shared link like ?route=CP1-... goes straight into that route
     const code = codeFromInput(window.location.search);
     const route = code ? decodeRoute(code) : null;
+    const join = joinCodeFromInput(window.location.search); // a ?join=KEYWORD link from a friend
     if (code && route) this.scene.start('Game', { level: routeLevel(route, code) });
+    else if (join) this.scene.start('Lobby', { join });
     else this.scene.start('Menu');
   }
 

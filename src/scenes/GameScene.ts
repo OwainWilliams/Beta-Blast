@@ -2,12 +2,15 @@ import Phaser from 'phaser';
 import { GRID_X, HEIGHT, HOLD_COLOURS, LAUNCH_X, LAUNCH_Y, LOSE_ROW, LOSE_Y, WIDTH } from '../config';
 import { Engine, Flight, MAX_AIM, Removed, SPEED, STAGE_BONUS, SWEEP_BONUS, ShotResult } from '../game/engine';
 import { BOMB, Cell, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
-import { gradeLevel, LevelSpec, survivalLevel } from '../game/levels';
+import { gradeLevel, LevelSpec, survivalLevel, versusLevel } from '../game/levels';
 import { changeGrade, pauseMusic, resumeMusic, setIntensity, startMusic, stopMusic, toggleMusic } from '../game/music';
 import { isMutedNow, sfx, toggleMute, unlockAudio } from '../game/audio';
 import { getBest, getBestTime, getMusic, getShake, hintSeen, markHint, recordResult, recordTime, setShake } from '../game/storage';
 import { ChalkBag, chalkPuff } from '../chalkBag';
 import { makeButton, makeClimber, textureFor, txt } from '../ui';
+import { MAX_ATTACK, MAX_ROWS, Msg } from '../net/protocol';
+import { CloseReason, Session } from '../net/session';
+import { OpponentPanel } from '../versusPanel';
 
 const TRACK_X = 15;
 const TRACK_TOP = 40;
@@ -28,6 +31,7 @@ export interface GameData {
   level?: LevelSpec;
   from?: 'editor';
   code?: string;
+  versus?: Session; // a two-player match
 }
 
 export class GameScene extends Phaser.Scene {
@@ -56,7 +60,14 @@ export class GameScene extends Phaser.Scene {
   private clockText: Phaser.GameObjects.Text | null = null;
   private lastClock = -1;
   private stageBanner: Phaser.GameObjects.Text[] = [];
-  private baseClimber!: Phaser.GameObjects.Container;
+  private baseClimber: Phaser.GameObjects.Container | null = null;
+  private net: Session | null = null;
+  private panel: OpponentPanel | null = null;
+  private incomingText: Phaser.GameObjects.Text | null = null;
+  private opponentGone = false;
+  private leaveUi: Phaser.GameObjects.Container | null = null;
+  private rematchBtn: Phaser.GameObjects.Container | null = null;
+  private rematchNote: Phaser.GameObjects.Text | null = null;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
 
   private gaugeFill: Phaser.GameObjects.Rectangle | null = null;
@@ -87,6 +98,14 @@ export class GameScene extends Phaser.Scene {
     this.aim = 0;
     this.state = 'aiming';
     this.engine = new Engine(this.level);
+    this.net = this.data0.versus ?? null;
+    this.panel = null;
+    this.incomingText = null;
+    this.opponentGone = false;
+    this.leaveUi = null;
+    this.rematchBtn = null;
+    this.rematchNote = null;
+    this.baseClimber = null;
 
     this.add.image(0, 0, 'wall').setOrigin(0);
     for (const [r, c] of this.engine.grid.cells()) this.makeSprite(this.engine.grid.get(r, c)!, r, c);
@@ -96,7 +115,7 @@ export class GameScene extends Phaser.Scene {
     for (let x = GRID_X; x < WIDTH - GRID_X; x += 16) line.lineBetween(x, LOSE_Y, x + 8, LOSE_Y);
 
     this.trackClimber = null;
-    if (!this.level.survival) this.buildTrack();
+    if (!this.level.survival && !this.level.versus) this.buildTrack();
     this.buildHud();
     this.buildLauncher();
     this.buildInput();
@@ -115,9 +134,11 @@ export class GameScene extends Phaser.Scene {
 
     this.lastTickSec = -1;
     startMusic(this.level.grade);
+    if (this.net) this.startVersus();
     // Key objects outlive the scene, so drop our listeners on shutdown.
     this.events.once('shutdown', () => {
       Object.values(this.keys).forEach((k) => k.removeAllListeners());
+      this.net?.setHandler(null); // the match goes on across scenes; the next scene picks it up
       stopMusic(0);
     });
   }
@@ -142,6 +163,7 @@ export class GameScene extends Phaser.Scene {
     else txt(this, GRID_X + 40, 575, this.level.custom ? 'Custom' : this.level.label, 22, '#ffd166');
     this.scoreText = txt(this, LAUNCH_X, 575, 'Score 0', 20);
     if (this.level.survival) this.clockText = txt(this, WIDTH - GRID_X - 50, 575, '0:00', 20, '#c9d1ee');
+    else if (this.level.versus) this.incomingText = txt(this, WIDTH - GRID_X - 66, 575, '', 14, '#9aa6cf');
     else txt(this, WIDTH - GRID_X - 60, 575, `Best ${getBest(this.level.id)}`, 16, '#c9d1ee', false);
     this.comboText = txt(this, LAUNCH_X, 548, '', 20, '#ff9f43').setDepth(5).setVisible(false);
     this.muteText = txt(this, WIDTH - 24, 700, isMutedNow() ? '🔇' : '🔊', 18).setInteractive({ useHandCursor: true });
@@ -157,9 +179,10 @@ export class GameScene extends Phaser.Scene {
       txt(this, GAUGE_X, GAUGE_BOTTOM + 14, 'ROW', 9, '#9aa6cf');
     }
 
+    // a network match can't be paused, so the button asks whether you want to leave instead
     const pause = this.add.rectangle(WIDTH - 15, 22, 24, 30, 0x000000, 0.35).setInteractive({ useHandCursor: true });
-    txt(this, WIDTH - 15, 22, '❚❚', 10, '#c9d1ee');
-    pause.on('pointerup', () => this.setPaused(true));
+    txt(this, WIDTH - 15, 22, this.level.versus ? '✕' : '❚❚', 10, '#c9d1ee');
+    pause.on('pointerup', () => (this.level.versus ? this.askLeave() : this.setPaused(true)));
   }
 
   private buildLauncher(): void {
@@ -171,8 +194,10 @@ export class GameScene extends Phaser.Scene {
     this.time.addEvent({ delay: 1300, loop: true, callback: () => this.state === 'aiming' && !this.paused && this.bag.drip() });
     this.nxtSprite = this.add.image(LAUNCH_X + 120, LAUNCH_Y + 22, `hold-${this.engine.nxt}`).setScale(0.7);
     txt(this, LAUNCH_X + 120, LAUNCH_Y - 8, 'NEXT', 11, '#9aa6cf');
-    this.baseClimber = makeClimber(this, 80, 690, 1.3);
-    this.tweens.add({ targets: this.baseClimber, y: 686, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    if (!this.level.versus) {
+      this.baseClimber = makeClimber(this, 80, 690, 1.3);
+      this.tweens.add({ targets: this.baseClimber, y: 686, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
   }
 
   private buildInput(): void {
@@ -194,9 +219,9 @@ export class GameScene extends Phaser.Scene {
     this.keys.UP.on('down', () => this.fire());
     this.keys.S.on('down', () => this.swap());
     this.keys.DOWN.on('down', () => this.swap());
-    this.keys.R.on('down', () => this.restart());
-    this.keys.ESC.on('down', () => this.setPaused(!this.paused));
-    this.keys.P.on('down', () => this.setPaused(!this.paused));
+    this.keys.R.on('down', () => !this.level.versus && this.restart());
+    this.keys.ESC.on('down', () => (this.level.versus ? this.askLeave() : this.setPaused(!this.paused)));
+    this.keys.P.on('down', () => !this.level.versus && this.setPaused(!this.paused));
     this.keys.M.on('down', () => this.muteText.setText(toggleMute() ? '🔇' : '🔊'));
   }
 
@@ -454,7 +479,7 @@ export class GameScene extends Phaser.Scene {
       ease: res.placed.slid ? 'Bounce.easeOut' : 'Linear',
       onComplete: () => {
         // a hold that pops is already on its way out, so only the ones that stay get to settle
-        if (!res.popped.length) this.settle(img, r, c, !res.newRow);
+        if (!res.popped.length) this.settle(img, r, c, !res.newRow && !res.incoming);
       },
     });
     if (res.placed.slid) sfx.slide();
@@ -469,10 +494,19 @@ export class GameScene extends Phaser.Scene {
       this.celebratePop(res, target);
       if (res.sweep) this.cleanSweep(res);
     } else {
-      if (res.newRow) this.showDropRow(res.newRow);
       this.hint('match', 'Match 3 or more of the same hold to pop them');
       if (this.engine.misses > 0) this.hint('pump', 'Misses fill the pump pips. Fill them all and the wall drops a row');
     }
+
+    // rows that landed on this shot: the pump drop and/or rows the opponent sent
+    if (!res.sweep) {
+      const added = [...(res.newRow ?? []), ...(res.incoming ?? [])];
+      if (added.length) {
+        const label = res.incomingRows ? `INCOMING!  +${res.incomingRows}` : 'PUMPED!  The wall drops';
+        this.showDropRow(added, label, (res.newRow ? 1 : 0) + res.incomingRows);
+      }
+    }
+    if (this.net) this.versusAfterShot(res, target);
 
     for (const h of res.cracked) {
       const s = this.sprites.get(h);
@@ -607,8 +641,12 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- end of round ----------
 
-  private endGame(won: boolean, res?: ShotResult): void {
+  private endGame(won: boolean, res?: ShotResult, reason?: CloseReason): void {
     this.state = 'over';
+    if (this.net && !won) this.net.send({ t: 'over' });
+    this.leaveUi?.destroy();
+    this.leaveUi = null;
+    this.paused = false;
     stopMusic(1.2);
     this.guide.clear();
     this.ghost.setVisible(false);
@@ -621,7 +659,7 @@ export class GameScene extends Phaser.Scene {
     const previousTime = getBestTime(this.level.id);
     if (won) {
       this.removeHolds(res?.leftover ?? [], 'fall');
-      ({ bonus, flash } = this.engine.finishWin());
+      if (!this.level.versus) ({ bonus, flash } = this.engine.finishWin());
       this.scoreText.setText(`Score ${this.engine.score}`);
       if (this.trackClimber) this.tweens.add({ targets: this.trackClimber, y: TRACK_TOP, duration: 500 });
       // the climber tops out in a cloud of chalk, and the bag sends a big puff straight up
@@ -633,14 +671,18 @@ export class GameScene extends Phaser.Scene {
       });
       chalkPuff(this, LAUNCH_X, LAUNCH_Y, 0, -1, 1.8, 90);
       this.bag.kick();
-      this.tweens.add({ targets: this.baseClimber, y: 650, duration: 220, yoyo: true, repeat: 4 });
+      if (this.baseClimber) this.tweens.add({ targets: this.baseClimber, y: 650, duration: 220, yoyo: true, repeat: 4 });
       sfx.win();
-      this.sendMoment(flash);
+      this.sendMoment(this.level.versus ? 'YOU WIN!' : flash ? 'FLASH!' : 'SENT!');
     } else {
       if (this.trackClimber) this.tweens.add({ targets: this.trackClimber, y: TRACK_BOTTOM + 90, angle: 270, alpha: 0, duration: 700, ease: 'Quad.easeIn' });
-      this.tweens.add({ targets: this.baseClimber, angle: 90, duration: 300 });
+      if (this.baseClimber) this.tweens.add({ targets: this.baseClimber, angle: 90, duration: 300 });
       this.shake(300, 0.01);
       sfx.lose();
+    }
+    if (this.level.versus) {
+      this.time.delayedCall(won ? 2000 : 900, () => this.showVersusOverlay(won, reason));
+      return;
     }
     recordResult(this.level.id, this.engine.score, won);
     if (this.level.survival) recordTime(this.level.id, this.engine.elapsed);
@@ -649,9 +691,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Big "SENT!" with a flash and a shower of chalk and tape. */
-  private sendMoment(flash: boolean): void {
+  private sendMoment(label: string): void {
     this.cameras.main.flash(250, 255, 255, 255);
-    const t = txt(this, WIDTH / 2, 300, flash ? 'FLASH!' : 'SENT!', 90, '#ffd166').setDepth(90).setScale(0.1);
+    const t = txt(this, WIDTH / 2, 300, label, label.length > 6 ? 70 : 90, '#ffd166').setDepth(90).setScale(0.1);
     this.tweens.add({ targets: t, scale: 1, duration: 450, ease: 'Back.easeOut' });
     this.tweens.add({ targets: t, alpha: 0, duration: 300, delay: 1500, onComplete: () => t.destroy() });
     for (let i = 0; i < 70; i++) {
@@ -671,6 +713,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private leave(): void {
+    this.net?.close();
     this.scene.start(this.data0.from === 'editor' ? 'Editor' : 'Menu', { code: this.data0.code });
   }
 
@@ -702,6 +745,128 @@ export class GameScene extends Phaser.Scene {
     }
     c.add(makeButton(this, WIDTH / 2, y, 260, 54, won ? 'Climb again' : 'Try again', () => this.restart()));
     c.add(makeButton(this, WIDTH / 2, y + 70, 260, 54, this.data0.from === 'editor' ? 'Back to editor' : 'Menu', () => this.leave(), 0x59627f));
+  }
+
+  // ---------- two-player match ----------
+
+  private startVersus(): void {
+    const net = this.net!;
+    this.panel = new OpponentPanel(this);
+    this.refreshIncoming();
+    this.hint('versus', 'Pop holds to send rows to your opponent. Popping also blocks rows heading your way. Miss, and they land');
+    net.setHandler({ message: (m) => this.onNetMessage(m), close: (reason) => this.onOpponentGone(reason) });
+    this.sendState();
+    // 3, 2, 1, go: nobody may shoot until both players see the same start
+    this.state = 'resolving';
+    ['3', '2', '1', 'GO!'].forEach((label, i, all) => {
+      this.time.delayedCall(600 + i * 800, () => {
+        if (this.state === 'over') return;
+        const t = txt(this, WIDTH / 2, 300, label, 90, '#ffd166').setDepth(70).setScale(0.4);
+        this.tweens.add({ targets: t, scale: 1, duration: 260, ease: 'Back.easeOut' });
+        this.tweens.add({ targets: t, alpha: 0, duration: 300, delay: 450, onComplete: () => t.destroy() });
+        sfx.tick();
+        if (i === all.length - 1 && this.state === 'resolving') this.state = 'aiming';
+      });
+    });
+  }
+
+  private onNetMessage(m: Msg): void {
+    switch (m.t) {
+      case 'attack':
+        this.engine.receive(m.n);
+        this.refreshIncoming();
+        this.sendState();
+        sfx.drop();
+        break;
+      case 'state':
+        this.panel?.update(m);
+        break;
+      case 'over':
+        if (this.state !== 'over') this.endGame(true);
+        break;
+      case 'start': // the host wants a rematch
+        if (this.net?.role === 'guest' && this.state === 'over') this.scene.restart({ level: versusLevel(m.seed), versus: this.net });
+        break;
+    }
+  }
+
+  private onOpponentGone(reason: CloseReason): void {
+    this.opponentGone = true;
+    if (this.state !== 'over') this.endGame(true, undefined, reason);
+    else this.updateRematch();
+  }
+
+  /** Tell the opponent how my wall looks. */
+  private sendState(): void {
+    this.net?.send({ t: 'state', score: Math.min(this.engine.score, 1e9), pending: Math.min(this.engine.pending, 99), rows: this.engine.snapshot().slice(0, MAX_ROWS) });
+  }
+
+  private refreshIncoming(): void {
+    const n = this.engine.pending;
+    this.incomingText?.setText(n > 0 ? `INCOMING ${n}` : 'no rows incoming').setColor(n > 0 ? '#ff6b6b' : '#9aa6cf');
+  }
+
+  /** After each of my shots: send rows for connections, show what got blocked, and update the opponent. */
+  private versusAfterShot(res: ShotResult, at: { x: number; y: number }): void {
+    for (let left = res.attack; left > 0; left -= MAX_ATTACK) this.net!.send({ t: 'attack', n: Math.min(left, MAX_ATTACK) });
+    if (res.attack > 0) this.popup(at.x, at.y + 76, `Sent ${res.attack} row${res.attack > 1 ? 's' : ''}!`, '#7ae6dc', 17);
+    if (res.cancelled > 0) this.popup(at.x, at.y + 100, `Blocked ${res.cancelled}!`, '#7ee787', 17);
+    this.refreshIncoming();
+    this.sendState();
+  }
+
+  /** Leaving a match is a forfeit, so ask first. The match carries on behind the question. */
+  private askLeave(): void {
+    if (this.paused || this.state === 'over') return;
+    this.paused = true;
+    const c = this.add.container(0, 0).setDepth(200);
+    this.leaveUi = c;
+    c.add(this.add.rectangle(WIDTH / 2, 360, WIDTH, 720, 0x000000, 0.75).setInteractive());
+    c.add(txt(this, WIDTH / 2, 260, 'Leave the match?', 36, '#ffd166'));
+    c.add(txt(this, WIDTH / 2, 312, 'Your opponent wins if you go.', 16, '#c9d1ee', false));
+    c.add(makeButton(this, WIDTH / 2, 400, 260, 52, 'Keep playing', () => {
+      this.paused = false;
+      c.destroy();
+      this.leaveUi = null;
+    }, 0x2e8b57));
+    c.add(makeButton(this, WIDTH / 2, 470, 260, 52, 'Leave', () => this.leave(), 0x8a3b3b));
+  }
+
+  private showVersusOverlay(won: boolean, reason?: CloseReason): void {
+    const e = this.engine;
+    const c = this.add.container(0, 0).setDepth(100);
+    c.add(this.add.rectangle(WIDTH / 2, 360, WIDTH, 720, 0x000000, 0.7).setInteractive());
+    c.add(txt(this, WIDTH / 2, 170, won ? 'YOU WIN!' : 'YOU LOSE', 60, won ? '#ffd166' : '#ff8a8a'));
+    const why = reason === 'left' ? 'Your opponent left the match' : reason === 'timeout' ? 'Lost contact with your opponent' : '';
+    if (why) c.add(txt(this, WIDTH / 2, 226, why, 16, '#c9d1ee', false));
+    c.add(txt(this, WIDTH / 2, 268, `Score ${e.score}  vs  ${this.panel?.score ?? 0}`, 24));
+    c.add(txt(this, WIDTH / 2, 304, `Rows sent ${e.sent}  ·  rows taken ${e.received}  ·  best combo x${e.bestCombo}`, 14, '#c9d1ee', false));
+    if (this.net?.role === 'host') {
+      this.rematchBtn = makeButton(this, WIDTH / 2, 390, 260, 54, 'Rematch', () => this.startRematch(), 0x2e8b57);
+      c.add(this.rematchBtn);
+    }
+    this.rematchNote = txt(this, WIDTH / 2, 390, '', 16, '#c9d1ee', false);
+    c.add(this.rematchNote);
+    c.add(makeButton(this, WIDTH / 2, 470, 260, 54, 'Leave', () => this.leave(), 0x59627f));
+    this.updateRematch();
+  }
+
+  /** The host's button, or for the guest a note, depending on who is still here. */
+  private updateRematch(): void {
+    if (!this.rematchNote) return;
+    if (this.opponentGone) {
+      this.rematchBtn?.destroy();
+      this.rematchBtn = null;
+      this.rematchNote.setText('Your opponent has left.');
+    } else if (this.net?.role === 'guest') this.rematchNote.setText('Waiting for the host to start a rematch…');
+  }
+
+  private startRematch(): void {
+    const net = this.net;
+    if (!net || this.opponentGone) return;
+    const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+    net.send({ t: 'start', seed });
+    this.scene.restart({ level: versusLevel(seed), versus: net });
   }
 
   // ---------- pause ----------

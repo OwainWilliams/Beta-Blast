@@ -13,10 +13,12 @@
     "balance": "BALANCE=1 vitest run tests/balance.test.ts"
   },
   "dependencies": {
+    "peerjs": "^1.5.5",
     "phaser": "^3.90.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "peer": "^1.0.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3"

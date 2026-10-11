@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { Engine } from '../src/game/engine';
 import { BOMB, SLICK, VOLUME, WILD } from '../src/game/grid';
-import { gradeLevel, LevelSpec, survivalLevel } from '../src/game/levels';
+import { gradeLevel, LevelSpec, survivalLevel, versusLevel } from '../src/game/levels';
+import { VERSUS_RULES } from '../src/game/versus';
 import { emptyLayout } from '../src/game/routes';
 
 function custom(build: (l: number[][]) => void, extra: Partial<LevelSpec> = {}): Engine {
@@ -406,5 +407,160 @@ describe('flight', () => {
     const { end } = e.trace(1.3);
     expect(end.bounces).toBeGreaterThan(0);
     expect(end.y).toBeLessThan(640);
+  });
+});
+
+describe('versus', () => {
+  const duel = (seed = 21, extra: Partial<LevelSpec> = {}) => new Engine({ ...versusLevel(seed), ...extra });
+  /** A small hand-built wall, so the shots below land where we expect. */
+  const arena = (build: (l: number[][]) => void, extra: Partial<LevelSpec> = {}) => {
+    const layout = emptyLayout();
+    build(layout);
+    return new Engine({ ...versusLevel(5), layout, ...extra });
+  };
+  // a pair of 1s on the top row with a 2 far away, so shooting a 1 at (0,2) pops three
+  const pairAndAnchor = (l: number[][]) => {
+    l[0][0] = 1;
+    l[0][1] = 1;
+    l[0][8] = 2;
+  };
+  const pop = (e: Engine) => e.land(1, e.grid.cellX(0, 2), e.grid.cellY(0), 0);
+  const miss = (e: Engine) => e.land(3, e.grid.cellX(0, 5), e.grid.cellY(0), 0);
+
+  afterEach(() => Object.assign(VERSUS_RULES, { cancelWithPops: true, deferUntilMiss: true }));
+
+  it('gives both players the same wall and the same holds from the same seed', () => {
+    const a = duel(77);
+    const b = duel(77);
+    expect(a.snapshot()).toEqual(b.snapshot());
+    const dealt = (e: Engine) => Array.from({ length: 40 }, () => e.shoot());
+    expect(dealt(a)).toEqual(dealt(b));
+  });
+
+  it('deals the same holds even when the two walls differ', () => {
+    const a = duel(9);
+    const b = duel(9);
+    // b's wall gets two extra rows, a's does not; the colours are still all present
+    b.receive(2);
+    b.land(3, b.grid.cellX(0, 5), b.grid.cellY(0), 0);
+    const kinds = (e: Engine) => Array.from({ length: 30 }, () => e.shoot()).filter((t) => t >= 5);
+    // bombs and mega jugs come from the shared stream, so they appear at the same moments
+    expect(kinds(a)).toEqual(kinds(b));
+  });
+
+  it('a different seed is a different match', () => {
+    expect(duel(1).snapshot()).not.toEqual(duel(2).snapshot());
+  });
+
+  it('a connection sends a row to the opponent', () => {
+    const e = arena(pairAndAnchor);
+    const res = pop(e);
+    expect(res.popped).toHaveLength(3);
+    expect(res.attack).toBe(1);
+    expect(e.sent).toBe(1);
+  });
+
+  it('a miss sends nothing', () => {
+    const e = arena(pairAndAnchor);
+    expect(miss(e).attack).toBe(0);
+  });
+
+  it('rows sent to you wait until you miss, then all land together', () => {
+    const e = arena(pairAndAnchor);
+    e.receive(2);
+    expect(e.pending).toBe(2);
+    const before = e.grid.count();
+    const res = miss(e);
+    expect(res.incomingRows).toBe(2);
+    expect(res.incoming).toHaveLength(e.grid.rowLength(0) + e.grid.rowLength(1));
+    expect(e.pending).toBe(0);
+    expect(e.received).toBe(2);
+    expect(e.grid.count()).toBe(before + 1 + 10 + 9); // the missed hold, plus two rows
+  });
+
+  it('popping cancels queued rows before sending any on', () => {
+    const e = arena(pairAndAnchor);
+    e.receive(1);
+    const res = pop(e);
+    expect(res.cancelled).toBe(1);
+    expect(res.attack).toBe(0);
+    expect(res.incoming).toBeNull();
+    expect(e.pending).toBe(0);
+    expect(e.sent).toBe(0);
+  });
+
+  it('a pop that cancels only some of the queue leaves the rest waiting', () => {
+    const e = arena(pairAndAnchor);
+    e.receive(3);
+    const res = pop(e);
+    expect(res.cancelled).toBe(1);
+    expect(res.attack).toBe(0);
+    expect(res.incoming).toBeNull(); // deferred: a pop never lets rows land
+    expect(e.pending).toBe(2);
+  });
+
+  it('a big cut-off pays an extra row', () => {
+    const e = arena((l) => {
+      l[0][0] = 1;
+      l[0][1] = 1;
+      l[0][8] = 2;
+      // a long tail hanging off the pair: five holds that fall once it pops
+      l[1][0] = 3;
+      l[2][0] = 4;
+      l[3][0] = 3;
+      l[4][0] = 4;
+      l[5][0] = 3;
+    });
+    const res = pop(e);
+    expect(res.fallen.length).toBeGreaterThanOrEqual(4);
+    expect(res.attack).toBe(2);
+  });
+
+  it('clearing every colour sends a lot and refills your wall', () => {
+    const e = arena((l) => {
+      l[0][0] = 1;
+      l[0][1] = 1;
+    });
+    const res = pop(e);
+    expect(res.won).toBe(false); // versus never ends by clearing
+    expect(res.sweep).toBe(true);
+    expect(res.attack).toBe(1 + 3); // the connection plus the sweep
+    expect(res.newRow!.length).toBe(9 + 10 + 9);
+    expect(e.grid.presentTypes().length).toBeGreaterThan(0);
+  });
+
+  it('incoming rows can bury you', () => {
+    const e = arena(pairAndAnchor);
+    for (let i = 0; i < 11; i++) e.grid.addRowTop([1, 2]);
+    expect(e.grid.lowestRow()).toBe(11);
+    e.receive(2);
+    expect(miss(e).lost).toBe(true);
+  });
+
+  it('can be set to land rows after every shot, even a pop', () => {
+    VERSUS_RULES.deferUntilMiss = false;
+    const e = arena(pairAndAnchor);
+    e.receive(2);
+    const res = pop(e);
+    expect(res.cancelled).toBe(1);
+    expect(res.incomingRows).toBe(1); // what the pop did not cancel lands now
+  });
+
+  it('can be set not to cancel at all', () => {
+    VERSUS_RULES.cancelWithPops = false;
+    const e = arena(pairAndAnchor);
+    e.receive(1);
+    const res = pop(e);
+    expect(res.cancelled).toBe(0);
+    expect(res.attack).toBe(1);
+    expect(e.pending).toBe(1);
+  });
+
+  it('describes the wall for the opponent view, trimming empty rows', () => {
+    const e = arena(pairAndAnchor);
+    expect(e.snapshot()).toEqual(['11......2.']);
+    const snap = duel(3).snapshot();
+    expect(snap.length).toBeGreaterThanOrEqual(5);
+    for (const row of snap) expect(row).toMatch(/^[0-467.]{9,10}$/);
   });
 });

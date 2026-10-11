@@ -28,6 +28,23 @@ Each colour of hold (jug, crimp, sloper, pinch, pocket) also has its own shape, 
 
 **Survival**: a mode with no finish line. The wall keeps coming on a timer that speeds up as the stages go by (a stage every 40 s: rows start every 11 s and tighten 5% per stage down to 4.5 s). The wall starts with 3 colours, gets a fourth at stage 3, volumes at stage 4, all five colours at stage 5 and slick holds at stage 6. Each new stage pays +250 and the music picks up the pace. Clear every colour and you get a **clean sweep**: +500 and three fresh rows arrive at once. The run ends when the wall reaches the red line, and your best score and longest run are saved.
 
+**2 Player** (menu, bottom right): race a friend over the internet.
+
+- **Host a game** gives you a keyword like `CHALK-DYNO-58` and a link. Your friend picks **Join a game** and types the keyword, or just opens the link. When they connect you press Start.
+- Both players get the **same wall and the same stream of holds** (dealt from a shared seed), so the match is decided by play, not luck.
+- Every **connection** (a pop) sends your opponent a row, and cutting off 4 or more holds sends a second. Rows sent to you wait in a queue and land together when you **miss**; popping first **cancels** queued rows, and only the surplus is sent on. Clear every colour and you send 4 rows and get a fresh wall. Reach the red line and you lose.
+- The opponent's wall is shown in miniature at the bottom left, with their score and the rows queued against them.
+- The host can start a **rematch** on a new shared wall. There is no pause in a match; the ✕ button asks whether you want to forfeit.
+- **Same device**: open the game in two tabs and use *Host in this tab* / *Join from another tab*.
+
+Good to know:
+
+- Players connect **directly (WebRTC)**. To introduce them, the game uses PeerJS's free public matchmaking service, which sees the keyword and both players' IP addresses, and the browser's default STUN servers are used to find a route. Your opponent also sees your IP address, as in any peer-to-peer game.
+- Some networks (strict firewalls, some mobile carriers) block direct connections, and there is no relay, so those players will see "Couldn't connect". Nothing is sent after a match ends.
+- Messages from the other player are treated as untrusted: they are checked field by field before use. It is still a friendly game, not an anti-cheat one: each browser runs its own game and trusts the other's reports of rows sent.
+- To use your own matchmaking server, build with `VITE_PEER_HOST` (and optionally `VITE_PEER_PORT`, `VITE_PEER_PATH`, `VITE_PEER_SECURE=false`).
+- The rules (what a connection sends, whether rows wait for a miss) are a few lines in `src/game/versus.ts`.
+
 **Music**: a procedural loop with no audio files. The grade picks the chords and melody and sets the tempo (96 BPM at V0, up to 150). More layers join in as the wall gets low or the timer runs down. Toggle it in the pause menu or main menu.
 
 **Combo**: pop on back-to-back shots to build a multiplier (up to x2).
@@ -60,11 +77,13 @@ src/game/engine.ts   the rules: shots, scoring, combo, pump, special holds (pure
 src/game/levels.ts   grades, seeded RNG, daily route
 src/game/routes.ts   share codes for custom routes
 src/game/audio.ts    synthesised sound effects
+src/game/versus.ts   the rules of a two-player match
 src/game/music.ts    procedural background music
-src/scenes/          Boot (draws textures), Menu, Game, Editor
+src/net/              protocol, keywords, transports (WebRTC, same-browser, in-memory), match session
+src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby
 tests/               vitest, plus an opt-in balance bot
 ```
 
 ## Ideas for later
 
-Crumbling holds, a leaderboard for the daily route (needs a small backend), versus mode, installable PWA.
+Crumbling holds, a leaderboard for the daily route (needs a small backend), a relay server for players whose networks block direct connections, spectating, installable PWA.
