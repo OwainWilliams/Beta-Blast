@@ -9,7 +9,7 @@ function sample() {
   layout[1][3] = 6;
   layout[2][5] = 7;
   layout[3][0] = 2;
-  return { layout, shotsPerDrop: 5, bombs: true, wilds: true };
+  return { layout, shotsPerDrop: 5, bombs: true, wilds: true, timer: 2 };
 }
 
 describe('route codes', () => {
@@ -19,6 +19,7 @@ describe('route codes', () => {
     expect(back.shotsPerDrop).toBe(5);
     expect(back.bombs).toBe(true);
     expect(back.wilds).toBe(true);
+    expect(back.timer).toBe(2);
     // rows after the last used one are trimmed
     expect(back.layout).toHaveLength(4);
     expect(back.layout).toEqual(route.layout.slice(0, 4));
@@ -42,29 +43,41 @@ describe('route codes', () => {
   });
 
   it('keeps bombs and mega jugs independent', () => {
-    const route = { ...sample(), bombs: false, wilds: true };
-    expect(decodeRoute(encodeRoute(route))).toMatchObject({ bombs: false, wilds: true });
-    expect(decodeRoute(encodeRoute({ ...route, bombs: true, wilds: false }))).toMatchObject({ bombs: true, wilds: false });
+    const route = { ...sample(), bombs: false, wilds: true, timer: 2 };
+    expect(decodeRoute(encodeRoute(route))).toMatchObject({ bombs: false, wilds: true, timer: 2 });
+    expect(decodeRoute(encodeRoute({ ...route, bombs: true, wilds: false, timer: 0 }))).toMatchObject({ bombs: true, wilds: false, timer: 0 });
   });
 
-  it('rejects reserved flag bits', () => {
-    const b64decode = (s: string) => Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (ch) => ch.charCodeAt(0));
-    const reencode = (bytes: number[]) => {
-      const body = bytes.slice(0, -1);
-      body.push(body.reduce((a, b) => (a * 31 + b + 1) & 0xff, 7)); // fresh checksum
-      return 'CP1-' + btoa(String.fromCharCode(...body)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  it('keeps every timer setting, independent of the other flags', () => {
+    for (const timer of [0, 1, 2, 3]) {
+      const route = { ...sample(), bombs: false, wilds: true, timer };
+      expect(decodeRoute(encodeRoute(route))).toMatchObject({ bombs: false, wilds: true, timer, shotsPerDrop: 5 });
+    }
+  });
+
+  it('turns the timer setting into seconds between rows', () => {
+    const level = (timer: number) => {
+      const code = encodeRoute({ ...sample(), timer });
+      return routeLevel(decodeRoute(code)!, code);
     };
-    const bytes = b64decode(encodeRoute(sample()).slice(4));
-    expect(decodeRoute(reencode([...bytes]))).not.toBeNull(); // control: the re-encoding itself is valid
-    const reserved = [...bytes];
-    reserved[1] |= 0x40;
-    expect(decodeRoute(reencode(reserved))).toBeNull();
+    expect(level(0).dropInterval).toBe(0);
+    expect(level(1).dropInterval).toBe(40);
+    expect(level(2).dropInterval).toBe(20);
+    expect(level(3).dropInterval).toBe(10);
+  });
+
+  it('still reads codes made before the timer existed, with no timer', () => {
+    // CP1 code from the mega jug release: flag byte had bits 6 and 7 clear
+    const bytes = [1, 0x25, 0x00, 0xff, 0xff, 0xff, 0xff];
+    const sum = bytes.reduce((a, b) => (a * 31 + b + 1) & 0xff, 7);
+    const code = 'CP1-' + btoa(String.fromCharCode(...bytes, sum)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    expect(decodeRoute(code)).toMatchObject({ shotsPerDrop: 5, bombs: false, wilds: true, timer: 0 });
   });
 
   it('rejects a route with nothing to pop', () => {
     const layout = emptyLayout();
     layout[0][0] = 6; // only an obstacle
-    expect(decodeRoute(encodeRoute({ layout, shotsPerDrop: 6, bombs: false, wilds: false }))).toBeNull();
+    expect(decodeRoute(encodeRoute({ layout, shotsPerDrop: 6, bombs: false, wilds: false, timer: 0 }))).toBeNull();
   });
 
   it('accepts a bare code or a link', () => {

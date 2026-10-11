@@ -4,6 +4,18 @@ import { isMuted, setMuted } from './storage';
 let ctx: AudioContext | null = null;
 let muted = isMuted();
 
+const unlockHandlers: (() => void)[] = [];
+const muteHandlers: (() => void)[] = [];
+
+/** Run `cb` once the browser lets us make sound (after the first tap or key press), and on every later unlock call. */
+export function onUnlock(cb: () => void): void {
+  unlockHandlers.push(cb);
+}
+export function onMuteChange(cb: () => void): void {
+  muteHandlers.push(cb);
+}
+export const getContext = (): AudioContext | null => ctx;
+
 export function unlockAudio(): void {
   try {
     ctx ??= new AudioContext();
@@ -11,11 +23,13 @@ export function unlockAudio(): void {
   } catch {
     /* audio unsupported */
   }
+  unlockHandlers.forEach((cb) => cb());
 }
 
 export function toggleMute(): boolean {
   muted = !muted;
   setMuted(muted);
+  muteHandlers.forEach((cb) => cb());
   return muted;
 }
 export const isMutedNow = (): boolean => muted;
@@ -67,6 +81,7 @@ export const sfx = {
     for (let i = 0; i < Math.min(n, 6); i++) tone(base + i * 90, 0.12, 'triangle', 0.1, undefined, i * 0.04);
   },
   wild: () => [660, 880, 1100, 1320].forEach((f, i) => tone(f, 0.12, 'sine', 0.07, undefined, i * 0.04)),
+  tick: () => tone(1200, 0.04, 'square', 0.04),
   crack: () => tone(220, 0.1, 'square', 0.08, 120),
   slide: () => tone(700, 0.25, 'sine', 0.06, 200),
   fall: () => tone(500, 0.4, 'sawtooth', 0.05, 90),

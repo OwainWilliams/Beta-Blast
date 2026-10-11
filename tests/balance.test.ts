@@ -4,7 +4,11 @@
 import { describe, expect, it } from 'vitest';
 import { Engine, MAX_AIM } from '../src/game/engine';
 import { BOMB, WILD } from '../src/game/grid';
-import { gradeLevel, mulberry32, MAX_GRADE } from '../src/game/levels';
+import { gradeLevel, mulberry32 } from '../src/game/levels';
+
+// How long one shot takes a decent player: aim, fly, land, think. The row timer runs on this clock.
+const SHOT_SECONDS = Number(process.env.SHOT_SECONDS ?? 2.2);
+const TOP_GRADE = Number(process.env.TOP_GRADE ?? 20);
 
 const ANGLES = Array.from({ length: 27 }, (_, i) => -1.3 + i * 0.1);
 
@@ -38,6 +42,8 @@ function play(grade: number, seed: number, skill: number) {
     } else {
       aim = (pick() * 2 - 1) * MAX_AIM;
     }
+    const timed = e.tick(SHOT_SECONDS);
+    if (timed?.lost) return { won: false, shots, drops: e.drops };
     const { end } = e.trace(aim, 12, false);
     const res = e.land(e.shoot(), end.x, end.y, end.bounces);
     if (res.won) return { won: true, shots, drops: e.drops };
@@ -51,7 +57,7 @@ describe.skipIf(!process.env.BALANCE)('balance', () => {
     const GAMES = Number(process.env.GAMES ?? 12);
     const lines = ['grade  skill  win%  avg shots  avg pumps'];
     for (const skill of [0.6, 0.85]) {
-      for (let g = 0; g <= MAX_GRADE; g++) {
+      for (let g = 0; g <= TOP_GRADE; g++) {
         const results = Array.from({ length: GAMES }, (_, i) => play(g, 1000 + i * 17 + g, skill));
         const wins = results.filter((r) => r.won).length;
         const avg = (f: (r: (typeof results)[number]) => number) => (results.reduce((a, r) => a + f(r), 0) / GAMES).toFixed(1);

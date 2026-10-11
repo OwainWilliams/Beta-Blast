@@ -5,17 +5,18 @@ interface Save {
   sent: Record<string, boolean>;
   muted: boolean;
   shake: boolean;
+  music: boolean;
   hints: Record<string, boolean>;
 }
 
 function load(): Save {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { best: {}, sent: {}, muted: false, shake: true, hints: {}, ...JSON.parse(raw) };
+    if (raw) return { best: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, ...JSON.parse(raw) };
   } catch {
     /* storage unavailable */
   }
-  return { best: {}, sent: {}, muted: false, shake: true, hints: {} };
+  return { best: {}, sent: {}, muted: false, shake: true, music: true, hints: {} };
 }
 
 function save(s: Save): void {
@@ -51,4 +52,9 @@ export function markHint(id: string): void {
   const s = load();
   s.hints[id] = true;
   save(s);
+}
+
+export const getMusic = (): boolean => load().music;
+export function setMusic(music: boolean): void {
+  save({ ...load(), music });
 }

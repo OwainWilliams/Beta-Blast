@@ -260,6 +260,69 @@ describe('mega jug', () => {
   });
 });
 
+describe('row timer', () => {
+  const timed = (interval: number, extra: Partial<LevelSpec> = {}) =>
+    custom(
+      (l) => {
+        l[0][0] = 1;
+        l[0][1] = 2;
+        l[0][9] = 3;
+      },
+      { dropInterval: interval, ...extra },
+    );
+
+  it('adds a row when the interval runs out, and not before', () => {
+    const e = timed(10);
+    expect(e.tick(9.9)).toBeNull();
+    expect(e.timerFraction()).toBeCloseTo(0.99);
+    const drop = e.tick(0.2)!;
+    expect(drop.newRow).toHaveLength(e.grid.rowLength(0)); // rows alternate between 10 and 9 holds
+    expect(e.drops).toBe(1);
+    expect(e.timerFraction()).toBe(0); // restarts
+    expect(e.grid.get(1, 0)).not.toBeNull(); // the old top row moved down
+  });
+
+  it('does nothing when the level has no timer', () => {
+    const e = timed(0);
+    expect(e.tick(1000)).toBeNull();
+    expect(e.timerFraction()).toBe(0);
+    expect(e.grid.count()).toBe(3);
+  });
+
+  it('leaves the pump pips alone', () => {
+    const e = timed(5);
+    shootAt(e, 3, 0, 0); // a miss
+    expect(e.misses).toBe(1);
+    e.tick(5.1);
+    expect(e.misses).toBe(1);
+  });
+
+  it('a pump drop restarts the timer', () => {
+    const e = timed(30, { shotsPerDrop: 3 });
+    e.tick(20);
+    shootAt(e, 3, 0, 0);
+    shootAt(e, 3, 0, 9);
+    const res = shootAt(e, 3, 0, 5);
+    expect(res.newRow).not.toBeNull();
+    expect(e.timerFraction()).toBe(0);
+  });
+
+  it('reports a loss when a timed row pushes the wall past the red line', () => {
+    const e = timed(5);
+    for (let i = 0; i < 11; i++) e.grid.addRowTop([1, 2]);
+    expect(e.grid.lowestRow()).toBe(11); // one row above the red line
+    const drop = e.tick(5.1)!;
+    expect(e.grid.lowestRow()).toBe(12);
+    expect(drop.lost).toBe(true);
+  });
+
+  it('a timed row breaks FLASH', () => {
+    const e = timed(5);
+    e.tick(5.1);
+    expect(e.finishWin().flash).toBe(false);
+  });
+});
+
 describe('flight', () => {
   it('bounces off the side walls and stops at a hold or the ceiling', () => {
     const e = custom((l) => {

@@ -6,6 +6,7 @@ export interface LevelSpec {
   colours: number;
   rows: number;
   shotsPerDrop: number; // misses before the wall drops a row ("pump")
+  dropInterval?: number; // seconds between timed rows; 0 or missing = no timer
   bombs: boolean;
   wilds?: boolean; // mega jug shots
   volumeRate?: number; // chance a generated cell is a volume
@@ -15,8 +16,6 @@ export interface LevelSpec {
   layout?: number[][]; // hand-built route: hold type per cell, -1 = empty
   code?: string; // share code for a custom route
 }
-
-export const MAX_GRADE = 10;
 
 export function mulberry32(seed: number): () => number {
   let a = seed | 0;
@@ -31,7 +30,15 @@ export function mulberry32(seed: number): () => number {
 // Misses allowed before the wall drops a row, per grade. Tuned with `npm run balance`.
 const PUMP_LIMIT = [8, 8, 7, 7, 7, 7, 6, 6, 5, 5, 4];
 
+/** Seconds between timed rows. Starts relaxed and tightens by 7% a grade down to a floor. */
+export const dropIntervalFor = (grade: number): number => Math.max(20, 90 * 0.93 ** grade);
+
+/**
+ * Grades never run out. Difficulty ramps up through V10 as tuned, then keeps tightening
+ * (more obstacles, faster rows) until it levels off around V25 at hard-but-winnable.
+ */
 export function gradeLevel(grade: number, seed = 1000 + grade * 7919): LevelSpec {
+  const late = Math.max(0, grade - 10); // grades past V10
   return {
     id: `v${grade}`,
     label: `V${grade}`,
@@ -39,11 +46,12 @@ export function gradeLevel(grade: number, seed = 1000 + grade * 7919): LevelSpec
     seed,
     colours: grade < 2 ? 3 : grade < 6 ? 4 : 5,
     rows: 4 + Math.min(grade, 6),
-    shotsPerDrop: PUMP_LIMIT[Math.min(grade, MAX_GRADE)],
+    shotsPerDrop: grade <= 10 ? PUMP_LIMIT[grade] : 4,
+    dropInterval: dropIntervalFor(grade),
     bombs: grade >= 2,
     wilds: grade >= 1,
-    volumeRate: grade >= 4 ? Math.min(0.12, 0.025 * (grade - 3)) : 0,
-    slickRate: grade >= 7 ? Math.min(0.08, 0.02 * (grade - 6)) : 0,
+    volumeRate: grade >= 4 ? Math.min(0.16, grade <= 10 ? Math.min(0.12, 0.025 * (grade - 3)) : 0.12 + 0.008 * late) : 0,
+    slickRate: grade >= 7 ? Math.min(0.1, grade <= 10 ? Math.min(0.08, 0.02 * (grade - 6)) : 0.08 + 0.005 * late) : 0,
   };
 }
 
