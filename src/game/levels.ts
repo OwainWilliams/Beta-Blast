@@ -12,6 +12,7 @@ export interface LevelSpec {
   volumeRate?: number; // chance a generated cell is a volume
   slickRate?: number; // chance a generated cell is a slick hold
   daily?: boolean;
+  survival?: boolean; // no win: the wall keeps coming and the score is how long you last
   custom?: boolean;
   layout?: number[][]; // hand-built route: hold type per cell, -1 = empty
   code?: string; // share code for a custom route
@@ -73,3 +74,32 @@ export function dailyLevel(date = new Date()): LevelSpec {
   const grade = 3 + (seed % 5);
   return { ...gradeLevel(grade, seed), id: `daily-${key}`, label: 'Daily Boulder', daily: true };
 }
+
+/** The endless mode. A fresh seed each run, so no two runs start on the same wall. */
+export function survivalLevel(seed = Math.floor(Math.random() * 2 ** 31)): LevelSpec {
+  return {
+    id: 'survival',
+    label: 'Survival',
+    grade: 0,
+    seed,
+    colours: 3,
+    rows: 4,
+    shotsPerDrop: 6,
+    dropInterval: SURVIVAL_START_INTERVAL,
+    bombs: true,
+    wilds: true,
+    volumeRate: 0,
+    slickRate: 0,
+    survival: true,
+  };
+}
+
+// Survival pacing. Every STAGE_SECONDS the stage goes up: rows come faster, then new colours and obstacles join.
+export const SURVIVAL_STAGE_SECONDS = 40;
+export const SURVIVAL_START_INTERVAL = 11;
+export const SURVIVAL_MIN_INTERVAL = 4.5;
+export const survivalStage = (elapsed: number): number => 1 + Math.floor(elapsed / SURVIVAL_STAGE_SECONDS);
+export const survivalInterval = (stage: number): number => Math.max(SURVIVAL_MIN_INTERVAL, SURVIVAL_START_INTERVAL * 0.95 ** (stage - 1));
+export const survivalColours = (stage: number): number => Math.min(5, 3 + Math.floor((stage - 1) / 2));
+export const survivalVolumeRate = (stage: number): number => (stage >= 4 ? Math.min(0.12, 0.03 * (stage - 3)) : 0);
+export const survivalSlickRate = (stage: number): number => (stage >= 6 ? Math.min(0.08, 0.02 * (stage - 5)) : 0);
