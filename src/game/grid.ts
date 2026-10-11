@@ -5,10 +5,23 @@ export const COLS = 10;
 export const R = 24; // hold radius
 export const D = R * 2;
 export const H = R * Math.sqrt(3); // row height
-export const BOMB = 5; // chalk bomb type; 0-4 are coloured holds
+export const LOSE_ROW = 12;
+
+// Hold types: 0-4 are the coloured holds you match.
+export const BOMB = 5; // chalk bomb (only ever shot, never on the wall)
+export const VOLUME = 6; // big obstacle, takes 2 nearby pops to break
+export const SLICK = 7; // greasy obstacle, shots that land next to it slide down
+
+export const isColour = (type: number): boolean => type >= 0 && type < 5;
+export const isObstacle = (type: number): boolean => type === VOLUME || type === SLICK;
 
 export interface Hold {
   type: number;
+  hp?: number; // obstacles only
+}
+
+export function makeHold(type: number): Hold {
+  return type === VOLUME ? { type, hp: 2 } : type === SLICK ? { type, hp: 1 } : { type };
 }
 export type Cell = [number, number];
 
@@ -63,7 +76,7 @@ export class Grid {
     return out;
   }
 
-  private hasOccupiedNeighbor(r: number, c: number): boolean {
+  hasOccupiedNeighbor(r: number, c: number): boolean {
     return this.neighbors(r, c).some(([nr, nc]) => this.get(nr, nc));
   }
 
@@ -179,7 +192,7 @@ export class Grid {
     const set = new Set<number>();
     for (const [r, c] of this.cells()) {
       const t = this.get(r, c)!.type;
-      if (t !== BOMB) set.add(t);
+      if (isColour(t)) set.add(t);
     }
     return [...set].sort();
   }

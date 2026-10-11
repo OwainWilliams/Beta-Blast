@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { Hold, VOLUME } from './game/grid';
 
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
@@ -52,4 +53,10 @@ export function makeClimber(scene: Phaser.Scene, x: number, y: number, scale = 1
   g.fillStyle(0xffd166, 1).fillCircle(0, -46, 7);
   g.fillStyle(0xffffff, 1).fillRoundedRect(4, -22, 8, 9, 2); // chalk bag
   return scene.add.container(x, y, [g]).setScale(scale);
+}
+
+/** Texture for a hold on the wall; a damaged volume shows its cracks. */
+export function textureFor(hold: Hold): string {
+  if (hold.type === VOLUME && (hold.hp ?? 2) < 2) return 'hold-6c';
+  return `hold-${hold.type}`;
 }
