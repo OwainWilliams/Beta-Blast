@@ -24,7 +24,7 @@ export interface RoundResult {
   flash: boolean;
   survival?: { seconds: number; stage: number; bestSeconds: number; newBestScore: boolean; newBestTime: boolean };
   /** Leaderboard posting. `name` is the saved name ('' if none yet); `ask` prompts for one; `send` posts and says how it went. */
-  post?: { name: string; ask: () => string | null; send: (name: string) => Promise<string> };
+  post?: { name: string; ask: () => string | null; send: (name: string) => Promise<{ ok: boolean; message: string }>; view: () => void };
   next?: { label: string; go: () => void };
   again: () => void;
   leaveLabel: string;
@@ -49,17 +49,21 @@ export function showRoundResult(scene: Phaser.Scene, r: RoundResult): Container 
   if (r.won) c.add(txt(scene, WIDTH / 2, 298, r.flash ? `FLASH! No pumps. Bonus +${r.bonus}` : `Route bonus +${r.bonus}`, 18, '#ffd166'));
   let y = 370;
   if (r.post) {
-    y = 408;
+    y = 420;
     const post = r.post;
-    const status = txt(scene, WIDTH / 2, 345, '', 16, '#7ae6dc');
+    const status = txt(scene, WIDTH / 2, 340, '', 16, '#7ae6dc');
     c.add(status);
     const send = (name: string) => {
       status.setText('Posting to the leaderboard…');
-      void post.send(name).then((message) => status.active && status.setText(message));
+      void post.send(name).then((res) => {
+        if (!status.active) return;
+        status.setText(res.message).setColor(res.ok ? '#7ae6dc' : '#ff8a8a');
+        if (res.ok) c.add(makeButton(scene, WIDTH / 2, 372, 200, 30, 'See the board', post.view, 0x59627f, 14));
+      });
     };
     if (post.name) send(post.name);
     else {
-      const btn = makeButton(scene, WIDTH / 2, 345, 260, 40, 'Post to leaderboard', () => {
+      const btn = makeButton(scene, WIDTH / 2, 350, 260, 40, 'Post to leaderboard', () => {
         const name = post.ask();
         if (!name) return;
         btn.destroy();

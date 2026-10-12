@@ -9,7 +9,7 @@ import { getBest, getBestTime, getMusic, getPlayerName, getShake, recordResult, 
 import { ChalkBag, chalkPuff } from '../chalkBag';
 import { chalkBurst, colourRing, confetti, floatText, popWord } from '../effects';
 import { Hints } from '../hints';
-import { boardFor, postScore } from '../game/leaderboard';
+import { boardFor, postScore, rememberBoard } from '../game/leaderboard';
 import { RoundResult, showLeaveQuestion, showPauseMenu, showRoundResult, showVersusResult } from '../overlays';
 import { askName, makeClimber, textureFor, txt } from '../ui';
 import { MAX_ATTACK, MAX_ROWS, Msg } from '../net/protocol';
@@ -668,13 +668,16 @@ export class GameScene extends Phaser.Scene {
   /** What the results screen needs to post this score, or nothing if this round has no leaderboard. */
   private leaderboardPost(): RoundResult['post'] {
     const board = boardFor(this.level);
-    if (!board || this.engine.score <= 0) return undefined;
+    if (!board) return undefined;
+    rememberBoard(board);
+    if (this.engine.score <= 0) return undefined;
     const score = this.engine.score;
     const seconds = this.engine.elapsed;
     return {
       name: getPlayerName(),
       ask: askName,
-      send: async (name) => (await postScore(board, name, score, seconds)).message,
+      send: (name) => postScore(board, name, score, seconds),
+      view: () => this.scene.start('Leaderboard', { board }),
     };
   }
 

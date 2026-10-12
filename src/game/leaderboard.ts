@@ -9,6 +9,11 @@ export interface Entry {
 }
 
 export const MAX_NAME = 12;
+
+let lastBoard: string | null = null;
+/** The board of the round just played, so the Leaderboard screen opens on it. */
+export const rememberBoard = (board: string): void => void (lastBoard = board);
+export const lastPlayedBoard = (): string | null => lastBoard;
 const TIMEOUT_MS = 6000;
 
 /** The board for a level, or null if it has none (custom routes and two-player matches). */

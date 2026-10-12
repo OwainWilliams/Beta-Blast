@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { WIDTH } from '../config';
 import { formatTime } from '../game/format';
-import { boardTitle, Entry, fetchTop, todaysBoard } from '../game/leaderboard';
+import { boardTitle, Entry, fetchTop, lastPlayedBoard, todaysBoard } from '../game/leaderboard';
 import { getPlayerName } from '../game/storage';
 import { askName, makeButton, txt } from '../ui';
 
@@ -20,7 +20,7 @@ export class LeaderboardScene extends Phaser.Scene {
   }
 
   init(data: { board?: string }): void {
-    const i = data?.board ? BOARDS.indexOf(data.board) : -1;
+    const i = BOARDS.indexOf(data?.board ?? lastPlayedBoard() ?? '');
     if (i >= 0) lastBoard = i;
   }
 
