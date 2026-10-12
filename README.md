@@ -2,6 +2,8 @@
 
 A bouldering-themed bubble shooter. Fire holds at the wall, match three or more of the same hold to pop them, and cut off the rest so they fall. Clear the whole wall to **send** the route.
 
+Found a bug or have an idea? [Open an issue](https://github.com/OwainWilliams/Beta-Blast/issues/new).
+
 Built with TypeScript, [Phaser 3](https://phaser.io) and Vite. All art and sound is generated in code, so there are no asset files.
 
 ## Screenshots

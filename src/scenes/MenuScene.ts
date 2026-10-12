@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { WIDTH } from '../config';
+import { ISSUES_URL, WIDTH } from '../config';
 import { dailyLevel, gradeLevel, LevelSpec, survivalLevel } from '../game/levels';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
 import { getBest, getBestTime, getMusic, getShake, isSent, setShake } from '../game/storage';
@@ -75,7 +75,18 @@ export class MenuScene extends Phaser.Scene {
     toggle(270, () => `Music: ${getMusic() ? 'on' : 'off'}`, () => void toggleMusic());
     toggle(445, () => `Shake: ${getShake() ? 'on' : 'off'}`, () => setShake(!getShake()));
 
+    this.issuesLink(WIDTH / 2, 708);
+
     this.input.once('pointerdown', unlockAudio);
+  }
+
+  /** A small "report a problem" link to the project's issues on GitHub. */
+  private issuesLink(x: number, y: number): void {
+    const link = txt(this, x, y, 'Found a bug? Report it on GitHub', 12, '#9aa6cf', false).setInteractive({ useHandCursor: true });
+    this.add.rectangle(x, y + 8, link.width, 1, 0x9aa6cf, 0.7); // underline, so it reads as a link
+    link.on('pointerover', () => link.setColor('#ffd166'));
+    link.on('pointerout', () => link.setColor('#9aa6cf'));
+    link.on('pointerup', () => window.open(ISSUES_URL, '_blank', 'noopener,noreferrer'));
   }
 
   /** A tilted "PREVIEW" stamp: the game is still being built. ("Beta" means route information to climbers.) */
