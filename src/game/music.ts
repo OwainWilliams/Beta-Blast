@@ -184,8 +184,6 @@ let intensity = 0.3;
 let paused = false;
 let pending: Pattern | null = null; // takes over at the start of the next loop
 
-export const isMusicOn = (): boolean => getMusic();
-
 function applyGain(fade = 0.05): void {
   if (!ctx || !master) return;
   const level = isMutedNow() || !getMusic() || paused ? 0 : MASTER;
@@ -262,7 +260,7 @@ export function resumeMusic(): void {
 /** Move the music on to another grade's tempo and chords, when the current loop comes round. */
 export function changeGrade(grade: number): void {
   if (pattern) pending = buildPattern(grade);
-  else wantGrade = grade;
+  else if (wantGrade !== null) wantGrade = grade; // still waiting to start; stopped music stays stopped
 }
 
 /** 0 = calm, 1 = about to lose. Brings in the busier layers. */

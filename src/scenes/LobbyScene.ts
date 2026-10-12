@@ -5,7 +5,7 @@ import { unlockAudio } from '../game/audio';
 import { codeFromInput, linkFor, normaliseCode } from '../net/codes';
 import { Session } from '../net/session';
 import { ConnectError, FAILURE_TEXT, HostHandle, hostGame, joinGame, NetKind } from '../net/transport';
-import { makeButton, txt } from '../ui';
+import { copyToClipboard, makeButton, txt } from '../ui';
 
 const randomSeed = (): number => crypto.getRandomValues(new Uint32Array(1))[0];
 
@@ -195,13 +195,9 @@ export class LobbyScene extends Phaser.Scene {
   // ---------- helpers ----------
 
   private async copy(text: string, done: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(text);
-      const note = txt(this, WIDTH / 2, 462, done, 14, '#7ee787');
-      this.time.delayedCall(1500, () => note.destroy());
-    } catch {
-      window.prompt('Copy this to share it', text);
-    }
+    if (!(await copyToClipboard(text, 'Copy this to share it'))) return;
+    const note = txt(this, WIDTH / 2, 462, done, 14, '#7ee787');
+    this.time.delayedCall(1500, () => note.destroy());
   }
 
   private leaveToMenu(session: Session | null = this.session): void {

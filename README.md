@@ -9,7 +9,7 @@ Built with TypeScript, [Phaser 3](https://phaser.io) and Vite. All art and sound
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm test         # grid logic tests
+npm test         # unit and fuzz tests
 npm run build    # production build in dist/
 ```
 
@@ -72,17 +72,35 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 ## Project layout
 
 ```
-src/game/grid.ts     hex grid, matching, floating holds (pure, tested)
-src/game/engine.ts   the rules: shots, scoring, combo, pump, special holds (pure, tested)
-src/game/levels.ts   grades, seeded RNG, daily route
+src/game/grid.ts     hex grid, matching, floating holds (pure)
+src/game/engine.ts   the rules: shots, scoring, combo, pump, special holds, survival, versus (pure)
+src/game/levels.ts   grades, seeded RNG, daily route, survival and versus levels
 src/game/routes.ts   share codes for custom routes
-src/game/audio.ts    synthesised sound effects
 src/game/versus.ts   the rules of a two-player match
 src/game/music.ts    procedural background music
-src/net/              protocol, keywords, transports (WebRTC, same-browser, in-memory), match session
+src/game/audio.ts    synthesised sound effects
+src/game/storage.ts  saved scores and settings
+src/net/             protocol, keywords, transports (WebRTC, same-browser, in-memory), match session
 src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby
-tests/               vitest, plus an opt-in balance bot
+src/overlays.ts      result, leave and pause screens
+src/effects.ts       chalk bursts, floating text, confetti
+src/hints.ts         the one-off tips
+tests/               vitest (see below)
 ```
+
+## Tests and checks
+
+```bash
+npm run typecheck   # strict TypeScript
+npm test            # unit tests, plus the fuzz tests below
+npm run balance     # optional: the difficulty bot
+```
+
+The rules are pure TypeScript with no Phaser in them, so most of the game is tested without a browser:
+
+- **Unit tests** for the grid, engine, levels, route codes, saves, music patterns and the network layer. The PeerJS transport is tested against an in-memory stand-in for PeerJS.
+- **Fuzz tests** (`tests/fuzz.test.ts`) play hundreds of random games across every mode and check, after every shot, that the wall is consistent, nothing hangs in mid-air, nothing is removed twice and the score never goes down. They also throw 20,000 junk messages at the network parser. They count which cases they reached, and fail if any (bombs, mega jugs, slick holds, clean sweeps, incoming rows) never came up.
+- **CI** runs the type check, the tests and the build on every pull request.
 
 ## Ideas for later
 

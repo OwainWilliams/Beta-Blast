@@ -3,7 +3,7 @@ import { GRID_X, WIDTH } from '../config';
 import { D, Grid, Hold, isColour, makeHold, R, H, SLICK, VOLUME } from '../game/grid';
 import { codeFromInput, decodeRoute, emptyLayout, encodeRoute, MAX_EDIT_ROWS, MAX_PUMP, MIN_PUMP, Route, routeLevel, TIMER_NAMES } from '../game/routes';
 import { unlockAudio } from '../game/audio';
-import { makeButton, textureFor, txt } from '../ui';
+import { copyToClipboard, makeButton, makeToggle, textureFor, Toggle, txt } from '../ui';
 
 const ERASER = -1;
 const TOOLS = [0, 1, 2, 3, 4, VOLUME, SLICK, ERASER];
@@ -17,13 +17,11 @@ export class EditorScene extends Phaser.Scene {
   private bombs = true;
   private wilds = true;
   private timer = 0;
-  private timerBtn!: Phaser.GameObjects.Container;
+  private toggles: Toggle[] = [];
   private selection!: Phaser.GameObjects.Rectangle;
   private info!: Phaser.GameObjects.Text;
   private status!: Phaser.GameObjects.Text;
   private pumpText!: Phaser.GameObjects.Text;
-  private bombBtn!: Phaser.GameObjects.Container;
-  private wildBtn!: Phaser.GameObjects.Container;
   private pendingCode?: string;
 
   constructor() {
@@ -70,17 +68,16 @@ export class EditorScene extends Phaser.Scene {
     makeButton(this, 122, 574, 34, 34, '–', () => this.setPump(this.pump - 1), 0x59627f);
     this.pumpText = txt(this, 158, 574, String(this.pump), 20);
     makeButton(this, 194, 574, 34, 34, '+', () => this.setPump(this.pump + 1), 0x59627f);
-    this.bombBtn = makeButton(this, 313, 574, 118, 34, '', () => this.toggleBombs(), 0x59627f, 13);
-    this.wildBtn = makeButton(this, 445, 574, 118, 34, '', () => this.toggleWilds(), 0x59627f, 13);
-    this.toggleBombs(true);
-    this.toggleWilds(true);
+    this.toggles = [
+      makeToggle(this, 313, 574, 118, 34, () => `Bombs: ${this.bombs ? 'on' : 'off'}`, () => (this.bombs = !this.bombs), 13),
+      makeToggle(this, 445, 574, 118, 34, () => `Mega jugs: ${this.wilds ? 'on' : 'off'}`, () => (this.wilds = !this.wilds), 13),
+      makeToggle(this, 270, 674, 150, 38, () => `Row timer: ${TIMER_NAMES[this.timer]}`, () => (this.timer = (this.timer + 1) % TIMER_NAMES.length), 15),
+    ];
 
     makeButton(this, 105, 624, 150, 46, 'Test it', () => this.test(), 0x2e8b57);
     makeButton(this, 270, 624, 150, 46, 'Copy link', () => void this.copyLink(), 0x2f6fdd);
     makeButton(this, 435, 624, 150, 46, 'Load code', () => this.loadPrompt(), 0x2f6fdd);
     makeButton(this, 105, 674, 150, 38, 'Clear', () => this.clear(), 0x8a3b3b, 16);
-    this.timerBtn = makeButton(this, 270, 674, 150, 38, '', () => this.cycleTimer(), 0x59627f, 15);
-    this.cycleTimer(true);
     makeButton(this, 435, 674, 150, 38, 'Back', () => this.scene.start('Menu'), 0x59627f, 16);
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
@@ -118,22 +115,6 @@ export class EditorScene extends Phaser.Scene {
     this.pumpText.setText(String(this.pump));
   }
 
-  private toggleBombs(init = false): void {
-    if (!init) this.bombs = !this.bombs;
-    (this.bombBtn.list[1] as Phaser.GameObjects.Text).setText(`Bombs: ${this.bombs ? 'on' : 'off'}`);
-  }
-
-  /** Row timer setting: off, slow, normal, fast. */
-  private cycleTimer(init = false): void {
-    if (!init) this.timer = (this.timer + 1) % TIMER_NAMES.length;
-    (this.timerBtn.list[1] as Phaser.GameObjects.Text).setText(`Row timer: ${TIMER_NAMES[this.timer]}`);
-  }
-
-  private toggleWilds(init = false): void {
-    if (!init) this.wilds = !this.wilds;
-    (this.wildBtn.list[1] as Phaser.GameObjects.Text).setText(`Mega jugs: ${this.wilds ? 'on' : 'off'}`);
-  }
-
   // ---------- editing ----------
 
   private cellAt(x: number, y: number): [number, number] | null {
@@ -157,13 +138,14 @@ export class EditorScene extends Phaser.Scene {
       this.sprites.delete(old);
     }
     if (this.tool === ERASER) this.grid.set(r, c, null);
-    else {
-      const hold = makeHold(this.tool);
-      this.grid.set(r, c, hold);
-      const img = this.add.image(GRID_X + this.grid.cellX(r, c), this.grid.cellY(r), textureFor(hold));
-      this.sprites.set(hold, img);
-    }
+    else this.place(r, c, this.tool);
     this.refreshInfo();
+  }
+
+  private place(r: number, c: number, type: number): void {
+    const hold = makeHold(type);
+    this.grid.set(r, c, hold);
+    this.sprites.set(hold, this.add.image(GRID_X + this.grid.cellX(r, c), this.grid.cellY(r), textureFor(hold)));
   }
 
   private refreshInfo(): void {
@@ -210,12 +192,7 @@ export class EditorScene extends Phaser.Scene {
     const code = this.code();
     if (!code) return;
     const url = `${window.location.origin}${window.location.pathname}?route=${encodeURIComponent(code)}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      this.say('Link copied. Send it to a friend!');
-    } catch {
-      window.prompt('Copy this link to share your route', url);
-    }
+    if (await copyToClipboard(url, 'Copy this link to share your route')) this.say('Link copied. Send it to a friend!');
   }
 
   private loadPrompt(): void {
@@ -233,21 +210,12 @@ export class EditorScene extends Phaser.Scene {
       return;
     }
     this.clear();
-    route.layout.forEach((row, r) =>
-      row.forEach((type, c) => {
-        if (type < 0) return;
-        const hold = makeHold(type);
-        this.grid.set(r, c, hold);
-        this.sprites.set(hold, this.add.image(GRID_X + this.grid.cellX(r, c), this.grid.cellY(r), textureFor(hold)));
-      }),
-    );
+    route.layout.forEach((row, r) => row.forEach((type, c) => type >= 0 && this.place(r, c, type)));
     this.setPump(route.shotsPerDrop);
     this.bombs = route.bombs;
     this.wilds = route.wilds;
     this.timer = route.timer;
-    this.cycleTimer(true);
-    this.toggleBombs(true);
-    this.toggleWilds(true);
+    this.toggles.forEach((t) => t.refresh());
     this.refreshInfo();
     this.say(message);
   }

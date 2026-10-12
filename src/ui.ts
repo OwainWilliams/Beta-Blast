@@ -39,6 +39,42 @@ export function makeButton(
   return c;
 }
 
+export interface Toggle {
+  button: Phaser.GameObjects.Container;
+  /** Re-read the label, for when the value was changed from somewhere else. */
+  refresh(): void;
+}
+
+/** A button whose label shows a setting ("Sound: on"). `flip` changes the setting; the label updates itself. */
+export function makeToggle(scene: Phaser.Scene, x: number, y: number, w: number, h: number, label: () => string, flip: () => void, size = 16, fill = 0x59627f): Toggle {
+  const text = txt(scene, 0, 0, label(), size);
+  const bg = scene.add.rectangle(0, 0, w, h, fill).setStrokeStyle(2, 0xffffff, 0.35);
+  const button = scene.add.container(x, y, [bg, text]);
+  const refresh = () => void text.setText(label());
+  bg.setInteractive({ useHandCursor: true });
+  bg.on('pointerover', () => bg.setAlpha(0.85));
+  bg.on('pointerout', () => bg.setAlpha(1));
+  bg.on('pointerup', () => {
+    flip();
+    refresh();
+  });
+  return { button, refresh };
+}
+
+/**
+ * Copy text to the clipboard. Where the browser won't allow that (an insecure page, a locked-down
+ * webview), show the text in a prompt the player can copy from instead. True if it was copied.
+ */
+export async function copyToClipboard(text: string, fallbackMessage: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    window.prompt(fallbackMessage, text);
+    return false;
+  }
+}
+
 /** Little stick-figure climber, origin at the feet. */
 export function makeClimber(scene: Phaser.Scene, x: number, y: number, scale = 1): Phaser.GameObjects.Container {
   const g = scene.add.graphics();
