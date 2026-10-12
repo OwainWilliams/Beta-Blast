@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GRID_X, LAUNCH_X, LAUNCH_Y, LOSE_ROW, LOSE_Y, WIDTH } from '../config';
+import { Recorder, Replay, STEP } from '../game/replay';
 import { Engine, Flight, MAX_AIM, Removed, SPEED, STAGE_BONUS, SWEEP_BONUS, ShotResult } from '../game/engine';
 import { BOMB, Cell, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
 import { gradeLevel, LevelSpec, survivalLevel, versusLevel } from '../game/levels';
@@ -44,6 +45,8 @@ export class GameScene extends Phaser.Scene {
   private sprites = new Map<Hold, Phaser.GameObjects.Image>();
   private state: State = 'aiming';
   private paused = false;
+  private recorder = new Recorder();
+  private stepClock = 0; // real time not yet played as fixed steps
   private pauseUi: Phaser.GameObjects.Container | null = null;
 
   private aim = 0;
@@ -97,6 +100,8 @@ export class GameScene extends Phaser.Scene {
     this.aim = 0;
     this.state = 'aiming';
     this.engine = new Engine(this.level);
+    this.recorder = new Recorder();
+    this.stepClock = 0;
     this.net = this.data0.versus ?? null;
     this.panel = null;
     this.incomingText = null;
@@ -259,6 +264,7 @@ export class GameScene extends Phaser.Scene {
   private swap(): void {
     if (this.state !== 'aiming' || this.paused) return;
     this.engine.swap();
+    this.recorder.swap();
     this.refreshQueue();
     sfx.bounce();
   }
@@ -285,13 +291,14 @@ export class GameScene extends Phaser.Scene {
 
   private fire(): void {
     if (this.state !== 'aiming' || this.paused) return;
+    const aim = this.recorder.fire(this.aim);
     const type = this.engine.shoot();
-    const f = this.engine.launch(this.aim);
+    const f = this.engine.launch(aim);
     const sprite = this.add.image(LAUNCH_X, LAUNCH_Y, `hold-${type}`).setDepth(10);
     this.flight = { ...f, type, sprite };
     this.refreshQueue();
     // chalk puff out of the bag, and the next hold pops up into the mouth
-    chalkPuff(this, LAUNCH_X, LAUNCH_Y, Math.sin(this.aim), -Math.cos(this.aim));
+    chalkPuff(this, LAUNCH_X, LAUNCH_Y, Math.sin(aim), -Math.cos(aim));
     this.bag.kick();
     this.curSprite.setScale(0.3);
     this.tweens.add({ targets: this.curSprite, scale: 1, duration: 200, delay: 90, ease: 'Back.easeOut' });
@@ -321,7 +328,12 @@ export class GameScene extends Phaser.Scene {
   override update(_time: number, delta: number): void {
     if (this.paused) return;
     const dt = delta / 1000;
-    if (this.state === 'aiming' || this.state === 'flying') this.runTimer(dt);
+    // The engine runs in fixed steps, so a recorded round plays back identically (see replay.ts)
+    this.stepClock = Math.min(this.stepClock + dt, 0.25);
+    while (this.stepClock >= STEP) {
+      this.stepClock -= STEP;
+      this.step();
+    }
     if (this.state === 'aiming') {
       const left = this.keys.LEFT.isDown || this.keys.A.isDown;
       const right = this.keys.RIGHT.isDown || this.keys.D.isDown;
@@ -330,10 +342,17 @@ export class GameScene extends Phaser.Scene {
       this.aim = Phaser.Math.Clamp(this.aim, -MAX_AIM, MAX_AIM);
       this.bag.tilt(this.aim);
       this.drawGuide();
-    } else if (this.state === 'flying' && this.flight) {
+    }
+  }
+
+  /** One fixed slice of game time: the row timer, and the ball in flight. */
+  private step(): void {
+    if (this.state === 'aiming' || this.state === 'flying') this.runTimer(STEP);
+    if (this.state === 'aiming') this.recorder.aimed();
+    else if (this.state === 'flying' && this.flight) {
       const f = this.flight;
       const before = f.bounces;
-      const hit = this.engine.advance(f, SPEED * dt);
+      const hit = this.engine.advance(f, SPEED * STEP);
       if (f.bounces > before) sfx.bounce();
       f.sprite.setPosition(GRID_X + f.x, f.y);
       if (hit) this.land(f);
@@ -671,12 +690,12 @@ export class GameScene extends Phaser.Scene {
     if (!board) return undefined;
     rememberBoard(board);
     if (this.engine.score <= 0) return undefined;
-    const score = this.engine.score;
-    const seconds = this.engine.elapsed;
+    const { score, elapsed: seconds } = this.engine;
+    const replay: Replay = { seed: this.level.survival ? this.level.seed : undefined, shots: this.recorder.shots, tail: this.recorder.tail };
     return {
       name: getPlayerName(),
       ask: askName,
-      send: (name) => postScore(board, name, score, seconds),
+      send: (name) => postScore(board, name, score, seconds, replay),
       view: () => this.scene.start('Leaderboard', { board }),
     };
   }

@@ -1,11 +1,10 @@
 // What the leaderboard accepts. Pure functions, so they are tested without a database.
-// Scores are sent from the player's browser, so none of this can stop a determined cheater; it keeps out
-// junk, silly numbers and rude names.
+// A post carries the player's moves along with the score. Normally the Worker only checks the score is
+// believable for those moves (plausible() in src/game/replay.ts). With VERIFY_REPLAYS=1 it replays the moves
+// through the game's own engine and uses the score that comes out, so only a legal game can be posted.
+import { parseReplay, Replay } from '../../src/game/replay';
 
 export const MAX_NAME = 12;
-export const MAX_SCORE = 500_000;
-export const MAX_SURVIVAL_SCORE = 2_000_000;
-export const MAX_SECONDS = 6 * 60 * 60;
 export const POSTS_PER_MINUTE = 10;
 export const BOARD_SIZE = 10;
 
@@ -27,23 +26,25 @@ export function cleanName(raw: unknown): string | null {
 export interface Submission {
   board: string;
   name: string;
-  score: number;
-  seconds: number;
+  replay: Replay;
+  score: number; // what the game says it reached; the Worker checks it, or replaces it with its own replay's
+  seconds: number; // survival only
 }
 
 /** Check a posted body. Returns the cleaned submission, or the reason it was refused. */
 export function parseSubmission(body: unknown): Submission | string {
   if (typeof body !== 'object' || body === null) return 'Bad request';
   const b = body as Record<string, unknown>;
+  if ('score' in b && !('replay' in b)) return 'This version of the game is out of date. Reload the page and play again.';
   if (!isBoard(b.board)) return 'Unknown board';
   const name = cleanName(b.name);
   if (!name) return 'That name is not allowed. Use 1 to 12 letters, numbers, spaces, . _ -';
-  const max = b.board === 'survival' ? MAX_SURVIVAL_SCORE : MAX_SCORE;
-  if (!Number.isInteger(b.score) || (b.score as number) < 1 || (b.score as number) > max) return 'Score out of range';
-  const seconds = b.seconds ?? 0;
-  if (!Number.isInteger(seconds) || (seconds as number) < 0 || (seconds as number) > MAX_SECONDS) return 'Time out of range';
-  if (b.board !== 'survival' && seconds !== 0) return 'Only survival has a time';
-  return { board: b.board, name, score: b.score as number, seconds: seconds as number };
+  const replay = parseReplay(b.replay);
+  if (typeof replay === 'string') return replay;
+  const { score, seconds = 0 } = b;
+  if (!Number.isInteger(score) || (score as number) < 1 || (score as number) > 1e9) return 'Score out of range';
+  if (!Number.isInteger(seconds) || (seconds as number) < 0 || (seconds as number) > 86_400) return 'Time out of range';
+  return { board: b.board, name, replay, score: score as number, seconds: seconds as number };
 }
 
 export function allowedOrigin(origin: string | null, list: string): string | null {
