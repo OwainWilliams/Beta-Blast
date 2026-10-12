@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker/src/index';
 import { allowedOrigin, cleanName as serverCleanName, MAX_SCORE, parseSubmission, POSTS_PER_MINUTE } from '../worker/src/rules';
-import { boardFor, boardTitle, cleanName, fetchTop, postScore, todaysBoard } from '../src/game/leaderboard';
+import { boardFor, boardTitle, cleanName, fetchTop, lastPlayedBoard, postScore, rememberBoard, todaysBoard } from '../src/game/leaderboard';
 
 describe('the rules', () => {
   it('accepts a normal submission and tidies the name', () => {
@@ -160,6 +160,12 @@ describe('the game’s side', () => {
     expect(await postScore('v3', 'x', 5)).toEqual({ ok: false, message: 'That name is not allowed.' });
     vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('offline'))));
     expect(await postScore('v3', 'Ann', 5)).toEqual({ ok: false, message: "Couldn't reach the leaderboard" });
+  });
+
+  it('remembers the board of the last round, so the Leaderboard screen can open on it', () => {
+    expect(lastPlayedBoard()).toBeNull();
+    rememberBoard('v4');
+    expect(lastPlayedBoard()).toBe('v4');
   });
 
   it('only sends a time for survival', async () => {
