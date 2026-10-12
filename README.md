@@ -84,7 +84,7 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 
 **Route Setter**: build your own route (10 rows, all hold types, pump limit, bombs and mega jugs on/off, row timer off/slow/normal/fast), test it, and share it as a link or code. Anyone opening `?route=CODE` plays it straight away, or use *Play a code* in the menu.
 
-**Leaderboard**: after a grade, the Daily Boulder or a Survival run, pick a name (letters and numbers, up to 12) and post the score. Each grade, each day's Daily and Survival has its own top 10, under *Leaderboard* in the menu. Custom routes and two-player matches have no board. The game works fine if the API is down. See *Cheating* below for what stops fake scores and what doesn't.
+**Leaderboard**: after a grade, the Daily Boulder or a Survival run, pick a name (letters and numbers, up to 12) and post the score. Each grade, each day's Daily and Survival has its own top 10, under *Leaderboard* in the menu. Custom routes and two-player matches have no board. The game works fine if the API is down. Scores are checked by the API (see *Cheating* below).
 
 ## Balance
 
@@ -103,7 +103,7 @@ src/game/audio.ts    synthesised sound effects
 src/game/storage.ts  saved scores and settings
 src/net/             protocol, keywords, transports (WebRTC, same-browser, in-memory), match session
 src/game/leaderboard.ts  client for the leaderboard API
-src/game/replay.ts   records a round's moves, plays them back, and checks scores are believable
+src/game/replay.ts   records a round's moves and plays them back, for checking scores
 src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby, Leaderboard
 worker/              the leaderboard API: a Cloudflare Worker with a D1 database
 src/overlays.ts      result, leave and pause screens
@@ -123,11 +123,7 @@ The leaderboard is a small [Cloudflare Worker](https://developers.cloudflare.com
 
 ### Cheating
 
-The game runs in the player's browser, so a score can't simply be trusted. Two layers deal with that:
-
-- **Every post carries a replay.** The engine runs in fixed time steps, and the game records each shot (how long the player aimed, whether they swapped holds, the aim). `src/game/replay.ts` can play that back through the same engine and gets the same score and time to the digit. This was checked against the real game in a browser.
-- **By default the Worker checks the score is believable for the replay** (`plausible()`): no more than 800 points per shot plus 8,000 for a big drop (the best greedy bot averages about 315 per shot), a survival time that fits the moves, a Daily board for about today, and a seed for survival. That stops tampered requests and made-up numbers, but not someone who writes a replay by hand and keeps the score under those limits.
-- **Full verification is a switch.** With `VERIFY_REPLAYS = "1"` in `worker/wrangler.toml` the Worker replays every post and ignores the claimed score, so only a legal game can be posted (a bot could still play one). A replay costs 8 to 50 ms of CPU, and the Workers *Free* plan allows about 10 ms, so this needs the *Paid* plan ($5 a month). Nothing else needs to change.
+Every score is posted with a replay of the round, and the Worker checks the score against it before it goes on the board. The replay code is in `src/game/replay.ts`. For a stricter check, `VERIFY_REPLAYS = "1"` in `worker/wrangler.toml` makes the Worker replay every round through the game engine itself. That uses more CPU than the Workers *Free* plan allows, so it needs the *Paid* plan.
 
 ## Tests and checks
 

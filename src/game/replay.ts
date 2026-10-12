@@ -1,8 +1,7 @@
 // Recording a round and playing it back, for the leaderboard's anti-cheat.
 //
 // The game logs what the player did: how long they waited before each shot, whether the loaded hold was
-// swapped, and the aim. The Worker replays that through the same Engine and works out the score itself,
-// so a score can only be posted by someone who played a real, legal game (or wrote a bot that does).
+// swapped, and the aim. The Worker can replay that through the same Engine to work out the score itself.
 //
 // For a replay to give the same game every time, the engine is stepped in fixed slices of STEP seconds
 // (the scene does this in update()) instead of by however long each frame happened to take.
@@ -118,8 +117,7 @@ export function playReplay(level: LevelSpec, replay: Replay): Outcome {
 }
 
 // Cheap limits for when the Worker can't afford to replay a run (see worker/src/index.ts). They are set well
-// beyond what real play reaches: the best greedy bot averages about 315 points a shot, and no shot flies
-// longer than about 260 steps. They stop crude fakes, not a careful forgery.
+// beyond what real play reaches, so an honest player never meets them.
 export const SCORE_BASE = 8000; // room for one huge drop
 export const SCORE_PER_SHOT = 800;
 export const FLIGHT_MIN_STEPS = 3;
