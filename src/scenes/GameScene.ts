@@ -12,7 +12,7 @@ import { chalkBurst, colourRing, confetti, floatText, popWord } from '../effects
 import { Hints } from '../hints';
 import { boardFor, postScore, rememberBoard } from '../game/leaderboard';
 import { RoundResult, showLeaveQuestion, showPauseMenu, showRoundResult, showVersusResult } from '../overlays';
-import { askName, makeClimber, textureFor, txt } from '../ui';
+import { askName, Climber, makeClimber, textureFor, txt } from '../ui';
 import { MAX_ATTACK, MAX_ROWS, Msg } from '../net/protocol';
 import { CloseReason, Session } from '../net/session';
 import { OpponentPanel } from '../versusPanel';
@@ -61,12 +61,12 @@ export class GameScene extends Phaser.Scene {
   private scoreText!: Phaser.GameObjects.Text;
   private comboText!: Phaser.GameObjects.Text;
   private muteText!: Phaser.GameObjects.Text;
-  private trackClimber: Phaser.GameObjects.Container | null = null;
+  private trackClimber: Climber | null = null;
   private stageText: Phaser.GameObjects.Text | null = null;
   private clockText: Phaser.GameObjects.Text | null = null;
   private lastClock = -1;
   private stageBanner: Phaser.GameObjects.Text[] = [];
-  private baseClimber: Phaser.GameObjects.Container | null = null;
+  private baseClimber: Climber | null = null;
   private net: Session | null = null;
   private panel: OpponentPanel | null = null;
   private incomingText: Phaser.GameObjects.Text | null = null;
@@ -283,7 +283,10 @@ export class GameScene extends Phaser.Scene {
   private updateProgress(animate = true): void {
     if (!this.trackClimber) return;
     const y = TRACK_BOTTOM - (TRACK_BOTTOM - TRACK_TOP) * this.engine.progress();
-    if (animate) this.tweens.add({ targets: this.trackClimber, y, duration: 350, ease: 'Sine.easeOut' });
+    if (animate) {
+      this.tweens.add({ targets: this.trackClimber, y, duration: 350, ease: 'Sine.easeOut' });
+      this.trackClimber.climb(350);
+    }
     else this.trackClimber.y = y;
   }
 
@@ -621,7 +624,10 @@ export class GameScene extends Phaser.Scene {
       this.removeHolds(res?.leftover ?? [], 'fall');
       if (!this.level.versus) ({ bonus, flash } = this.engine.finishWin());
       this.scoreText.setText(`Score ${this.engine.score}`);
-      if (this.trackClimber) this.tweens.add({ targets: this.trackClimber, y: TRACK_TOP, duration: 500 });
+      if (this.trackClimber) {
+        this.tweens.add({ targets: this.trackClimber, y: TRACK_TOP, duration: 500 });
+        this.trackClimber.climb(500);
+      }
       // the climber tops out in a cloud of chalk, and the bag sends a big puff straight up
       this.time.delayedCall(500, () => {
         chalkPuff(this, TRACK_X + 6, TRACK_TOP - 4, 1, -0.3, 0.6, 90);
