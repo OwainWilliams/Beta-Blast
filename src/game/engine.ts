@@ -49,11 +49,35 @@ export interface TickResult {
   stage: number | null; // set when survival reached a new stage
 }
 
+// How often the queue deals a chalk bomb or a mega jug instead of a colour.
+const BOMB_CHANCE = 1 / 14;
+const WILD_CHANCE = 1 / 18;
+
 export const SWEEP_BONUS = 500;
 export const SWEEP_ROWS = 3;
 export const STAGE_BONUS = 250;
 
 const key = (c: Cell) => `${c[0]},${c[1]}`;
+
+const emptyResult = (combo: number): ShotResult => ({
+  placed: null,
+  popped: [],
+  fallen: [],
+  cracked: [],
+  newRow: null,
+  pop: 0,
+  bank: 0,
+  fall: 0,
+  combo,
+  won: false,
+  lost: false,
+  leftover: [],
+  sweep: false,
+  attack: 0,
+  cancelled: 0,
+  incoming: null,
+  incomingRows: 0,
+});
 
 export class Engine {
   readonly grid = new Grid();
@@ -120,8 +144,8 @@ export class Engine {
     if (this.level.shared) return this.drawShared();
     const present = this.grid.presentTypes();
     if (!present.length) return 0;
-    if (this.level.bombs && this.rng() < 1 / 14) return BOMB;
-    if (this.level.wilds && this.rng() < 1 / 18) return WILD;
+    if (this.level.bombs && this.rng() < BOMB_CHANCE) return BOMB;
+    if (this.level.wilds && this.rng() < WILD_CHANCE) return WILD;
     return present[Math.floor(this.rng() * present.length)];
   }
 
@@ -136,8 +160,8 @@ export class Engine {
     const colour = this.queueRng();
     const present = this.grid.presentTypes();
     if (!present.length) return 0;
-    if (this.level.bombs && bomb < 1 / 14) return BOMB;
-    if (this.level.wilds && wild < 1 / 18) return WILD;
+    if (this.level.bombs && bomb < BOMB_CHANCE) return BOMB;
+    if (this.level.wilds && wild < WILD_CHANCE) return WILD;
     const type = Math.floor(colour * this.level.colours);
     return present.includes(type) ? type : this.replacement();
   }
@@ -182,13 +206,9 @@ export class Engine {
     for (let i = 0; i < steps; i++) {
       b.x += ux * step;
       b.y += uy * step;
-      if (b.x < minX) {
-        b.x = 2 * minX - b.x;
-        ux = -ux;
-        b.vx = -b.vx;
-        b.bounces++;
-      } else if (b.x > maxX) {
-        b.x = 2 * maxX - b.x;
+      if (b.x < minX || b.x > maxX) {
+        const wall = b.x < minX ? minX : maxX;
+        b.x = 2 * wall - b.x; // reflect off the side wall
         ux = -ux;
         b.vx = -b.vx;
         b.bounces++;
@@ -275,25 +295,7 @@ export class Engine {
   // ---------- resolving a shot ----------
 
   land(type: number, x: number, y: number, bounces: number): ShotResult {
-    const res: ShotResult = {
-      placed: null,
-      popped: [],
-      fallen: [],
-      cracked: [],
-      newRow: null,
-      pop: 0,
-      bank: 0,
-      fall: 0,
-      combo: this.combo,
-      won: false,
-      lost: false,
-      leftover: [],
-      sweep: false,
-      attack: 0,
-      cancelled: 0,
-      incoming: null,
-      incomingRows: 0,
-    };
+    const res = emptyResult(this.combo);
     const snapped = this.grid.nearestEmpty(x, y);
     if (!snapped) {
       res.lost = true;
@@ -304,60 +306,72 @@ export class Engine {
     this.grid.set(cell[0], cell[1], hold);
     res.placed = { cell, hold, slid: cell !== snapped, wild: type === WILD };
 
-    let hit: Cell[] = [];
-    if (type === BOMB) hit = this.grid.blast(cell[0], cell[1]);
+    const hit = this.groupHit(type, cell);
+    if (hit.length) this.pop(res, hit, type !== BOMB, bounces);
     else {
-      const match = this.grid.findMatches(cell[0], cell[1]);
-      if (match.length >= 3) hit = match;
-    }
-
-    if (hit.length) {
-      if (type !== BOMB) hit.push(...this.damageObstacles(hit, res));
-      for (const c of hit) {
-        res.popped.push({ cell: c, hold: this.grid.get(c[0], c[1])! });
-        this.grid.set(c[0], c[1], null);
-      }
-      const n = hit.length;
-      this.combo++;
-      this.bestCombo = Math.max(this.bestCombo, this.combo);
-      this.misses = 0;
-      const mult = 1 + 0.2 * Math.min(this.combo - 1, 5);
-      res.pop = Math.round((n * 10 + Math.max(0, n - 3) * 5) * mult);
-      res.bank = bounces * 25;
-      for (const c of this.grid.findFloating()) {
-        res.fallen.push({ cell: c, hold: this.grid.get(c[0], c[1])! });
-        this.grid.set(c[0], c[1], null);
-      }
-      const k = res.fallen.length;
-      res.fall = (20 * k * (k + 1)) / 2;
-      this.score += res.pop + res.bank + res.fall;
-    } else {
       this.combo = 0;
       this.misses++;
     }
     res.combo = this.combo;
 
-    if (this.grid.presentTypes().length === 0) {
-      for (const c of this.grid.cells()) {
-        res.leftover.push({ cell: c, hold: this.grid.get(c[0], c[1])! });
-        this.grid.set(c[0], c[1], null);
-      }
-      if (!this.level.survival && !this.level.versus) {
-        res.won = true;
-        return res;
-      }
-      // Survival and versus never end by clearing the wall: you get a bonus and the next three rows arrive at once.
-      res.sweep = true;
-      res.newRow = [];
-      for (let i = 0; i < SWEEP_ROWS; i++) res.newRow.push(...this.addRow(false));
-      this.score += SWEEP_BONUS;
+    if (!this.grid.hasColour()) {
+      this.clearWall(res);
+      if (res.won) return res;
     }
-
     if (this.level.versus) this.exchangeRows(res, hit.length > 0);
     if (!hit.length && this.misses >= this.level.shotsPerDrop) res.newRow = this.addRow(true);
     if (this.grid.lowestRow() >= LOSE_ROW) res.lost = true;
     else this.refreshQueue();
     return res;
+  }
+
+  /** The holds this shot pops: a chalk bomb takes what it touches, anything else needs a group of three. */
+  private groupHit(type: number, cell: Cell): Cell[] {
+    if (type === BOMB) return this.grid.blast(cell[0], cell[1]);
+    const group = this.grid.findMatches(cell[0], cell[1]);
+    return group.length >= 3 ? group : [];
+  }
+
+  /** Remove the popped holds, break obstacles they touched, let anything cut off fall, and score it all. */
+  private pop(res: ShotResult, hit: Cell[], damagesObstacles: boolean, bounces: number): void {
+    if (damagesObstacles) hit.push(...this.damageObstacles(hit, res));
+    for (const c of hit) {
+      res.popped.push({ cell: c, hold: this.grid.get(c[0], c[1])! });
+      this.grid.set(c[0], c[1], null);
+    }
+    const n = hit.length;
+    this.combo++;
+    this.bestCombo = Math.max(this.bestCombo, this.combo);
+    this.misses = 0;
+    const mult = 1 + 0.2 * Math.min(this.combo - 1, 5);
+    res.pop = Math.round((n * 10 + Math.max(0, n - 3) * 5) * mult);
+    res.bank = bounces * 25;
+    for (const c of this.grid.findFloating()) {
+      res.fallen.push({ cell: c, hold: this.grid.get(c[0], c[1])! });
+      this.grid.set(c[0], c[1], null);
+    }
+    const k = res.fallen.length;
+    res.fall = (20 * k * (k + 1)) / 2;
+    this.score += res.pop + res.bank + res.fall;
+  }
+
+  /**
+   * No colour is left on the wall. A route is sent; survival and versus never end this way, so
+   * the player gets a bonus and the next three rows arrive at once. Leftover obstacles drop away.
+   */
+  private clearWall(res: ShotResult): void {
+    for (const c of this.grid.cells()) {
+      res.leftover.push({ cell: c, hold: this.grid.get(c[0], c[1])! });
+      this.grid.set(c[0], c[1], null);
+    }
+    if (!this.level.survival && !this.level.versus) {
+      res.won = true;
+      return;
+    }
+    res.sweep = true;
+    res.newRow = [];
+    for (let i = 0; i < SWEEP_ROWS; i++) res.newRow.push(...this.addRow(false));
+    this.score += SWEEP_BONUS;
   }
 
   /** Two-player: send rows for this shot's connection, cancel rows queued against you, and let the rest land when due. */
@@ -456,7 +470,7 @@ export class Engine {
   tick(dt: number): TickResult | null {
     const interval = this.currentInterval();
     if (interval <= 0) return null;
-    if (!this.level.survival && this.grid.presentTypes().length === 0) return null;
+    if (!this.level.survival && !this.grid.hasColour()) return null;
     this.elapsed += dt;
     this.dropClock += dt;
     let newRow: Hold[] | null = null;

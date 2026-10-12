@@ -1,13 +1,16 @@
 import Phaser from 'phaser';
-import { GRID_X, HEIGHT, HOLD_COLOURS, LAUNCH_X, LAUNCH_Y, LOSE_ROW, LOSE_Y, WIDTH } from '../config';
+import { GRID_X, LAUNCH_X, LAUNCH_Y, LOSE_ROW, LOSE_Y, WIDTH } from '../config';
 import { Engine, Flight, MAX_AIM, Removed, SPEED, STAGE_BONUS, SWEEP_BONUS, ShotResult } from '../game/engine';
 import { BOMB, Cell, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
 import { gradeLevel, LevelSpec, survivalLevel, versusLevel } from '../game/levels';
 import { changeGrade, pauseMusic, resumeMusic, setIntensity, startMusic, stopMusic, toggleMusic } from '../game/music';
 import { isMutedNow, sfx, toggleMute, unlockAudio } from '../game/audio';
-import { getBest, getBestTime, getMusic, getShake, hintSeen, markHint, recordResult, recordTime, setShake } from '../game/storage';
+import { getBest, getBestTime, getMusic, getShake, recordResult, recordTime, setShake } from '../game/storage';
 import { ChalkBag, chalkPuff } from '../chalkBag';
-import { makeButton, makeClimber, textureFor, txt } from '../ui';
+import { chalkBurst, colourRing, confetti, floatText, popWord } from '../effects';
+import { Hints } from '../hints';
+import { showLeaveQuestion, showPauseMenu, showRoundResult, showVersusResult } from '../overlays';
+import { makeClimber, textureFor, txt } from '../ui';
 import { MAX_ATTACK, MAX_ROWS, Msg } from '../net/protocol';
 import { CloseReason, Session } from '../net/session';
 import { OpponentPanel } from '../versusPanel';
@@ -15,7 +18,6 @@ import { OpponentPanel } from '../versusPanel';
 const TRACK_X = 15;
 const TRACK_TOP = 40;
 const TRACK_BOTTOM = 520;
-const HINT_MS = 4200;
 const GAUGE_X = 525;
 const GAUGE_TOP = 60;
 const GAUGE_BOTTOM = 520;
@@ -66,16 +68,13 @@ export class GameScene extends Phaser.Scene {
   private incomingText: Phaser.GameObjects.Text | null = null;
   private opponentGone = false;
   private leaveUi: Phaser.GameObjects.Container | null = null;
-  private rematchBtn: Phaser.GameObjects.Container | null = null;
-  private rematchNote: Phaser.GameObjects.Text | null = null;
+  private versusResult: { opponentLeft: () => void } | null = null;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
 
   private gaugeFill: Phaser.GameObjects.Rectangle | null = null;
   private lastTickSec = -1;
 
-  private hintQueue: { id: string; text: string }[] = [];
-  private hintShowing = false;
-  private hintBox: Phaser.GameObjects.Container | null = null;
+  private hints!: Hints;
 
   constructor() {
     super('Game');
@@ -86,11 +85,10 @@ export class GameScene extends Phaser.Scene {
     this.level = data.level ?? gradeLevel(0);
   }
 
-  create(): void {
+  /** A scene object is reused when a round restarts, so everything that belongs to a round starts afresh here. */
+  private resetRound(): void {
     this.sprites.clear();
-    this.hintQueue = [];
-    this.hintShowing = false;
-    this.hintBox = null;
+    this.hints = new Hints(this, () => !this.paused && this.state !== 'over');
     this.pauseUi = null;
     this.paused = false;
     this.time.paused = false;
@@ -103,10 +101,16 @@ export class GameScene extends Phaser.Scene {
     this.incomingText = null;
     this.opponentGone = false;
     this.leaveUi = null;
-    this.rematchBtn = null;
-    this.rematchNote = null;
+    this.versusResult = null;
     this.baseClimber = null;
+    this.trackClimber = null;
+    this.lastClock = -1;
+    this.lastTickSec = -1;
+    this.stageBanner = [];
+  }
 
+  create(): void {
+    this.resetRound();
     this.add.image(0, 0, 'wall').setOrigin(0);
     for (const [r, c] of this.engine.grid.cells()) this.makeSprite(this.engine.grid.get(r, c)!, r, c);
 
@@ -114,25 +118,21 @@ export class GameScene extends Phaser.Scene {
     line.lineStyle(3, 0xe5484d, 0.7);
     for (let x = GRID_X; x < WIDTH - GRID_X; x += 16) line.lineBetween(x, LOSE_Y, x + 8, LOSE_Y);
 
-    this.trackClimber = null;
     if (!this.level.survival && !this.level.versus) this.buildTrack();
     this.buildHud();
     this.buildLauncher();
     this.buildInput();
     this.refreshPips();
     this.updateProgress(false);
-    this.lastClock = -1;
-    this.stageBanner = [];
 
-    this.hint('aim', 'Aim with the mouse or your finger, then release to shoot');
-    if (this.level.survival) this.hint('survival', 'Survival: rows never stop and getting harder. Clear holds to hold them back and last as long as you can');
-    if (this.gaugeFill) this.hint('timer', 'The gauge on the right fills with time. When it is full, the wall drops a row');
+    this.hints.show('aim', 'Aim with the mouse or your finger, then release to shoot');
+    if (this.level.survival) this.hints.show('survival', 'Survival: rows never stop and getting harder. Clear holds to hold them back and last as long as you can');
+    if (this.gaugeFill) this.hints.show('timer', 'The gauge on the right fills with time. When it is full, the wall drops a row');
     this.refreshQueue(); // queues the bomb / mega jug tips if one is already loaded
     const kinds = new Set(this.engine.grid.cells().map(([r, c]) => this.engine.grid.get(r, c)!.type));
-    if (kinds.has(VOLUME)) this.hint('volume', 'Grey volumes crack when you pop holds next to them. Two pops breaks one');
-    if (kinds.has(SLICK)) this.hint('slick', 'Teal slick holds are greasy: shots that land beside one slide down');
+    if (kinds.has(VOLUME)) this.hints.show('volume', 'Grey volumes crack when you pop holds next to them. Two pops breaks one');
+    if (kinds.has(SLICK)) this.hints.show('slick', 'Teal slick holds are greasy: shots that land beside one slide down');
 
-    this.lastTickSec = -1;
     startMusic(this.level.grade);
     if (this.net) this.startVersus();
     // Key objects outlive the scene, so drop our listeners on shutdown.
@@ -167,7 +167,7 @@ export class GameScene extends Phaser.Scene {
     else txt(this, WIDTH - GRID_X - 60, 575, `Best ${getBest(this.level.id)}`, 16, '#c9d1ee', false);
     this.comboText = txt(this, LAUNCH_X, 548, '', 20, '#ff9f43').setDepth(5).setVisible(false);
     this.muteText = txt(this, WIDTH - 24, 700, isMutedNow() ? '🔇' : '🔊', 18).setInteractive({ useHandCursor: true });
-    this.muteText.on('pointerup', () => this.muteText.setText(toggleMute() ? '🔇' : '🔊'));
+    this.muteText.on('pointerup', () => this.toggleSound());
     this.pumpLabel = txt(this, LAUNCH_X, 708, 'PUMP', 11, '#9aa6cf');
     this.pips = this.add.graphics();
 
@@ -222,7 +222,7 @@ export class GameScene extends Phaser.Scene {
     this.keys.R.on('down', () => !this.level.versus && this.restart());
     this.keys.ESC.on('down', () => (this.level.versus ? this.askLeave() : this.setPaused(!this.paused)));
     this.keys.P.on('down', () => !this.level.versus && this.setPaused(!this.paused));
-    this.keys.M.on('down', () => this.muteText.setText(toggleMute() ? '🔇' : '🔊'));
+    this.keys.M.on('down', () => this.toggleSound());
   }
 
   // ---------- helpers ----------
@@ -238,6 +238,11 @@ export class GameScene extends Phaser.Scene {
     return img;
   }
 
+  private toggleSound(): void {
+    toggleMute();
+    this.muteText.setText(isMutedNow() ? '🔇' : '🔊');
+  }
+
   private shake(duration: number, intensity: number): void {
     if (getShake()) this.cameras.main.shake(duration, intensity);
   }
@@ -246,8 +251,8 @@ export class GameScene extends Phaser.Scene {
     const { cur, nxt } = this.engine;
     this.curSprite.setTexture(`hold-${cur}`);
     this.nxtSprite.setTexture(`hold-${nxt}`);
-    if (cur === WILD || nxt === WILD) this.hint('wild', 'Mega jug! It turns into whichever colour pops the most where it lands');
-    if (cur === BOMB || nxt === BOMB) this.hint('bomb', 'Chalk bomb! It clears every hold it touches');
+    if (cur === WILD || nxt === WILD) this.hints.show('wild', 'Mega jug! It turns into whichever colour pops the most where it lands');
+    if (cur === BOMB || nxt === BOMB) this.hints.show('bomb', 'Chalk bomb! It clears every hold it touches');
   }
 
   private swap(): void {
@@ -273,62 +278,6 @@ export class GameScene extends Phaser.Scene {
     const y = TRACK_BOTTOM - (TRACK_BOTTOM - TRACK_TOP) * this.engine.progress();
     if (animate) this.tweens.add({ targets: this.trackClimber, y, duration: 350, ease: 'Sine.easeOut' });
     else this.trackClimber.y = y;
-  }
-
-  private popup(x: number, y: number, text: string, color = '#ffd166', size = 18): void {
-    const t = txt(this, x, y, text, size, color).setDepth(50);
-    this.tweens.add({ targets: t, y: y - 40, alpha: 0, duration: 900, onComplete: () => t.destroy() });
-  }
-
-  private chalkBurst(x: number, y: number): void {
-    for (let i = 0; i < 6; i++) {
-      const p = this.add.image(x, y, 'chalk').setAlpha(0.9).setDepth(40);
-      this.tweens.add({
-        targets: p,
-        x: x + Phaser.Math.Between(-34, 34),
-        y: y + Phaser.Math.Between(-34, 20),
-        alpha: 0,
-        scale: 0.2,
-        duration: 450,
-        onComplete: () => p.destroy(),
-      });
-    }
-  }
-
-  // ---------- hints ----------
-
-  /** Show a one-off tip. Each tip appears once ever, queued so they never overlap. */
-  private hint(id: string, text: string): void {
-    if (hintSeen(id) || this.hintQueue.some((h) => h.id === id)) return;
-    this.hintQueue.push({ id, text });
-    this.nextHint();
-  }
-
-  private nextHint(): void {
-    if (this.hintShowing || this.paused || this.state === 'over') return;
-    const next = this.hintQueue.shift();
-    if (!next) return;
-    this.hintShowing = true;
-    markHint(next.id);
-    const label = txt(this, 0, 0, next.text, 14).setWordWrapWidth(430);
-    const box = this.add.rectangle(0, 0, 470, label.height + 18, 0x0d1020, 0.9).setStrokeStyle(2, 0xffd166, 0.8);
-    this.hintBox = this.add.container(WIDTH / 2, 546, [box, label]).setDepth(70).setAlpha(0);
-    this.tweens.add({ targets: this.hintBox, alpha: 1, duration: 200 });
-    this.time.delayedCall(HINT_MS, () => {
-      const hb = this.hintBox;
-      if (!hb) return;
-      this.tweens.add({
-        targets: hb,
-        alpha: 0,
-        duration: 300,
-        onComplete: () => {
-          hb.destroy();
-          this.hintBox = null;
-          this.hintShowing = false;
-          this.nextHint();
-        },
-      });
-    });
   }
 
   // ---------- shooting ----------
@@ -368,7 +317,7 @@ export class GameScene extends Phaser.Scene {
     this.ghost.setTexture(`hold-${type}`).setPosition(x, y).setVisible(true);
   }
 
-  update(_time: number, delta: number): void {
+  override update(_time: number, delta: number): void {
     if (this.paused) return;
     const dt = delta / 1000;
     if (this.state === 'aiming' || this.state === 'flying') this.runTimer(dt);
@@ -427,10 +376,14 @@ export class GameScene extends Phaser.Scene {
         sfx.tick();
       }
     }
-    // busier music as the wall gets low or the timer is about to run out
+    setIntensity(this.musicIntensity(frac));
+  }
+
+  /** Busier music as the wall gets low or the timer is about to run out. 0.25 is calm, 1 is about to lose. */
+  private musicIntensity(timerFraction: number): number {
     const wall = Phaser.Math.Clamp((this.engine.grid.lowestRow() - 7) / (LOSE_ROW - 1 - 7), 0, 1);
-    const time = Phaser.Math.Clamp((frac - 0.5) / 0.5, 0, 1);
-    setIntensity(0.25 + 0.75 * Math.max(wall, time));
+    const time = Phaser.Math.Clamp((timerFraction - 0.5) / 0.5, 0, 1);
+    return 0.25 + 0.75 * Math.max(wall, time);
   }
 
   /** Survival: every colour is gone. Leftover obstacles drop away and three fresh rows arrive. */
@@ -494,8 +447,8 @@ export class GameScene extends Phaser.Scene {
       this.celebratePop(res, target);
       if (res.sweep) this.cleanSweep(res);
     } else {
-      this.hint('match', 'Match 3 or more of the same hold to pop them');
-      if (this.engine.misses > 0) this.hint('pump', 'Misses fill the pump pips. Fill them all and the wall drops a row');
+      this.hints.show('match', 'Match 3 or more of the same hold to pop them');
+      if (this.engine.misses > 0) this.hints.show('pump', 'Misses fill the pump pips. Fill them all and the wall drops a row');
     }
 
     // rows that landed on this shot: the pump drop and/or rows the opponent sent
@@ -526,23 +479,10 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** A mega jug showing its true colour: a ring of coloured flecks. */
+  /** A mega jug showing its true colour. */
   private revealWild(x: number, y: number, type: number): void {
     sfx.wild();
-    for (let i = 0; i < 10; i++) {
-      const a = (Math.PI * 2 * i) / 10;
-      const fleck = this.add.image(x, y, 'chalk').setTint(HOLD_COLOURS[type]).setDepth(40).setScale(1.2);
-      this.tweens.add({
-        targets: fleck,
-        x: x + Math.cos(a) * 42,
-        y: y + Math.sin(a) * 42,
-        alpha: 0,
-        scale: 0.3,
-        duration: 480,
-        ease: 'Cubic.easeOut',
-        onComplete: () => fleck.destroy(),
-      });
-    }
+    colourRing(this, x, y, type);
   }
 
   /** A landed hold squashes on impact and springs back, and its neighbours get a small nudge. */
@@ -576,16 +516,16 @@ export class GameScene extends Phaser.Scene {
     this.removeHolds(res.popped, 'pop');
     sfx.pop(res.popped.length, res.combo);
     const mult = res.combo > 1 ? ` x${(1 + 0.2 * Math.min(res.combo - 1, 5)).toFixed(1)}` : '';
-    this.popup(at.x, at.y, `+${res.pop + res.bank}${mult}`);
-    if (res.bank) this.popup(at.x, at.y + 24, `Bank shot! +${res.bank}`, '#7ae6dc', 15);
+    floatText(this, at.x, at.y, `+${res.pop + res.bank}${mult}`);
+    if (res.bank) floatText(this, at.x, at.y + 24, `Bank shot! +${res.bank}`, '#7ae6dc', 15);
     if (res.fallen.length) {
       this.removeHolds(res.fallen, 'fall');
-      this.popup(at.x, at.y + 48, `Drop x${res.fallen.length}! +${res.fall}`, '#ffb86b');
+      floatText(this, at.x, at.y + 48, `Drop x${res.fallen.length}! +${res.fall}`, '#ffb86b');
       sfx.fall();
     }
     if (res.popped.length + res.fallen.length >= 8) this.shake(180, 0.004);
-    this.hint('cut', 'Holds cut off from the top fall away for bonus points');
-    if (res.combo >= 2) this.hint('combo', 'Pop on back-to-back shots to build a combo multiplier');
+    this.hints.show('cut', 'Holds cut off from the top fall away for bonus points');
+    if (res.combo >= 2) this.hints.show('combo', 'Pop on back-to-back shots to build a combo multiplier');
   }
 
   private showCombo(combo: number): void {
@@ -600,7 +540,7 @@ export class GameScene extends Phaser.Scene {
       this.sprites.delete(hold);
       if (!sprite) return;
       if (mode === 'pop') {
-        this.chalkBurst(sprite.x, sprite.y);
+        chalkBurst(this, sprite.x, sprite.y);
         this.tweens.add({ targets: sprite, scale: 1.4, alpha: 0, duration: 180, delay: i * 25, onComplete: () => sprite.destroy() });
       } else {
         this.tweens.add({
@@ -643,6 +583,8 @@ export class GameScene extends Phaser.Scene {
 
   private endGame(won: boolean, res?: ShotResult, reason?: CloseReason): void {
     this.state = 'over';
+    this.flight?.sprite.destroy(); // the timer or the opponent can end the game while a shot is in the air
+    this.flight = null;
     if (this.net && !won) this.net.send({ t: 'over' });
     this.leaveUi?.destroy();
     this.leaveUi = null;
@@ -650,9 +592,7 @@ export class GameScene extends Phaser.Scene {
     stopMusic(1.2);
     this.guide.clear();
     this.ghost.setVisible(false);
-    this.hintQueue = [];
-    this.hintBox?.destroy();
-    this.hintBox = null;
+    this.hints.clear();
     let bonus = 0;
     let flash = false;
     const previousBest = getBest(this.level.id);
@@ -665,9 +605,7 @@ export class GameScene extends Phaser.Scene {
       // the climber tops out in a cloud of chalk, and the bag sends a big puff straight up
       this.time.delayedCall(500, () => {
         chalkPuff(this, TRACK_X + 6, TRACK_TOP - 4, 1, -0.3, 0.6, 90);
-        const top = txt(this, TRACK_X + 46, TRACK_TOP + 12, 'TOP!', 16, '#ffd166').setDepth(90).setScale(0.2);
-        this.tweens.add({ targets: top, scale: 1.2, duration: 250, ease: 'Back.easeOut' });
-        this.tweens.add({ targets: top, alpha: 0, duration: 400, delay: 1100, onComplete: () => top.destroy() });
+        popWord(this, 'TOP!', { x: TRACK_X + 46, y: TRACK_TOP + 12, size: 16, from: 0.2, to: 1.2, growMs: 250, holdMs: 1100, fadeMs: 400 });
       });
       chalkPuff(this, LAUNCH_X, LAUNCH_Y, 0, -1, 1.8, 90);
       this.bag.kick();
@@ -681,35 +619,20 @@ export class GameScene extends Phaser.Scene {
       sfx.lose();
     }
     if (this.level.versus) {
-      this.time.delayedCall(won ? 2000 : 900, () => this.showVersusOverlay(won, reason));
+      this.time.delayedCall(won ? 2000 : 900, () => this.showVersusResult(won, reason));
       return;
     }
     recordResult(this.level.id, this.engine.score, won);
     if (this.level.survival) recordTime(this.level.id, this.engine.elapsed);
     const records = { score: this.engine.score > previousBest, time: Math.round(this.engine.elapsed) > previousTime };
-    this.time.delayedCall(won ? 2000 : 900, () => this.showOverlay(won, bonus, flash, records));
+    this.time.delayedCall(won ? 2000 : 900, () => this.showResult(won, bonus, flash, records));
   }
 
   /** Big "SENT!" with a flash and a shower of chalk and tape. */
   private sendMoment(label: string): void {
     this.cameras.main.flash(250, 255, 255, 255);
-    const t = txt(this, WIDTH / 2, 300, label, label.length > 6 ? 70 : 90, '#ffd166').setDepth(90).setScale(0.1);
-    this.tweens.add({ targets: t, scale: 1, duration: 450, ease: 'Back.easeOut' });
-    this.tweens.add({ targets: t, alpha: 0, duration: 300, delay: 1500, onComplete: () => t.destroy() });
-    for (let i = 0; i < 70; i++) {
-      const colour = i % 3 === 0 ? 0xffffff : HOLD_COLOURS[i % HOLD_COLOURS.length];
-      const bit = this.add.rectangle(Phaser.Math.Between(GRID_X, WIDTH - GRID_X), -20, 8, 14, colour).setDepth(80);
-      this.tweens.add({
-        targets: bit,
-        y: HEIGHT + 20,
-        x: bit.x + Phaser.Math.Between(-80, 80),
-        angle: Phaser.Math.Between(-540, 540),
-        duration: Phaser.Math.Between(1200, 2200),
-        delay: Phaser.Math.Between(0, 500),
-        ease: 'Quad.easeIn',
-        onComplete: () => bit.destroy(),
-      });
-    }
+    popWord(this, label, { size: label.length > 6 ? 70 : 90 });
+    confetti(this);
   }
 
   private leave(): void {
@@ -721,30 +644,27 @@ export class GameScene extends Phaser.Scene {
     this.scene.restart(this.level.survival ? { level: survivalLevel() } : this.data0);
   }
 
-  private showOverlay(won: boolean, bonus: number, flash: boolean, records: { score: boolean; time: boolean }): void {
+  private showResult(won: boolean, bonus: number, flash: boolean, records: { score: boolean; time: boolean }): void {
     const e = this.engine;
-    const c = this.add.container(0, 0).setDepth(100);
-    c.add(this.add.rectangle(WIDTH / 2, 360, WIDTH, 720, 0x000000, 0.7).setInteractive());
-    c.add(txt(this, WIDTH / 2, 170, won ? 'SENT!' : 'FELL!', 64, won ? '#ffd166' : '#ff8a8a'));
-    if (this.level.survival) {
-      const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
-      c.add(txt(this, WIDTH / 2, 230, `Survived ${mmss(e.elapsed)}  ·  Stage ${e.stage()}`, 26));
-      c.add(txt(this, WIDTH / 2, 266, `Score ${e.score}  ·  Best combo x${e.bestCombo}`, 18, '#ffffff'));
-      c.add(txt(this, WIDTH / 2, 296, `Best score ${getBest(this.level.id)}  ·  Longest ${mmss(getBestTime(this.level.id))}`, 15, '#c9d1ee', false));
-      const badge = [records.score && 'NEW BEST SCORE', records.time && 'NEW LONGEST RUN'].filter(Boolean).join('   ·   ');
-      if (badge) c.add(txt(this, WIDTH / 2, 326, badge, 16, '#ffd166'));
-    } else {
-      c.add(txt(this, WIDTH / 2, 230, `${this.level.custom ? 'Custom route' : this.level.label}  ·  Score ${e.score}`, 24));
-      c.add(txt(this, WIDTH / 2, 264, `Best ${getBest(this.level.id)}  ·  Best combo x${e.bestCombo}`, 16, '#c9d1ee', false));
-    }
-    if (won) c.add(txt(this, WIDTH / 2, 298, flash ? `FLASH! No pumps. Bonus +${bonus}` : `Route bonus +${bonus}`, 18, '#ffd166'));
-    let y = 370;
-    if (won && !this.level.daily && !this.level.custom) {
-      c.add(makeButton(this, WIDTH / 2, y, 260, 54, `Next: V${this.level.grade + 1}`, () => this.scene.restart({ level: gradeLevel(this.level.grade + 1) }), 0x2e8b57));
-      y += 70;
-    }
-    c.add(makeButton(this, WIDTH / 2, y, 260, 54, won ? 'Climb again' : 'Try again', () => this.restart()));
-    c.add(makeButton(this, WIDTH / 2, y + 70, 260, 54, this.data0.from === 'editor' ? 'Back to editor' : 'Menu', () => this.leave(), 0x59627f));
+    const id = this.level.id;
+    showRoundResult(this, {
+      won,
+      label: this.level.custom ? 'Custom route' : this.level.label,
+      score: e.score,
+      bestScore: getBest(id),
+      bestCombo: e.bestCombo,
+      bonus,
+      flash,
+      survival: this.level.survival ? { seconds: e.elapsed, stage: e.stage(), bestSeconds: getBestTime(id), newBestScore: records.score, newBestTime: records.time } : undefined,
+      next: won && !this.level.daily && !this.level.custom ? { label: `Next: V${this.level.grade + 1}`, go: () => this.scene.restart({ level: gradeLevel(this.level.grade + 1) }) } : undefined,
+      again: () => this.restart(),
+      leaveLabel: this.leaveLabel(),
+      leave: () => this.leave(),
+    });
+  }
+
+  private leaveLabel(): string {
+    return this.data0.from === 'editor' ? 'Back to editor' : 'Menu';
   }
 
   // ---------- two-player match ----------
@@ -753,7 +673,7 @@ export class GameScene extends Phaser.Scene {
     const net = this.net!;
     this.panel = new OpponentPanel(this);
     this.refreshIncoming();
-    this.hint('versus', 'Pop holds to send rows to your opponent. Popping also blocks rows heading your way. Miss, and they land');
+    this.hints.show('versus', 'Pop holds to send rows to your opponent. Popping also blocks rows heading your way. Miss, and they land');
     net.setHandler({ message: (m) => this.onNetMessage(m), close: (reason) => this.onOpponentGone(reason) });
     this.sendState();
     // 3, 2, 1, go: nobody may shoot until both players see the same start
@@ -761,9 +681,7 @@ export class GameScene extends Phaser.Scene {
     ['3', '2', '1', 'GO!'].forEach((label, i, all) => {
       this.time.delayedCall(600 + i * 800, () => {
         if (this.state === 'over') return;
-        const t = txt(this, WIDTH / 2, 300, label, 90, '#ffd166').setDepth(70).setScale(0.4);
-        this.tweens.add({ targets: t, scale: 1, duration: 260, ease: 'Back.easeOut' });
-        this.tweens.add({ targets: t, alpha: 0, duration: 300, delay: 450, onComplete: () => t.destroy() });
+        popWord(this, label, { from: 0.4, growMs: 260, holdMs: 450, depth: 70 });
         sfx.tick();
         if (i === all.length - 1 && this.state === 'resolving') this.state = 'aiming';
       });
@@ -793,7 +711,7 @@ export class GameScene extends Phaser.Scene {
   private onOpponentGone(reason: CloseReason): void {
     this.opponentGone = true;
     if (this.state !== 'over') this.endGame(true, undefined, reason);
-    else this.updateRematch();
+    else this.versusResult?.opponentLeft();
   }
 
   /** Tell the opponent how my wall looks. */
@@ -809,8 +727,8 @@ export class GameScene extends Phaser.Scene {
   /** After each of my shots: send rows for connections, show what got blocked, and update the opponent. */
   private versusAfterShot(res: ShotResult, at: { x: number; y: number }): void {
     for (let left = res.attack; left > 0; left -= MAX_ATTACK) this.net!.send({ t: 'attack', n: Math.min(left, MAX_ATTACK) });
-    if (res.attack > 0) this.popup(at.x, at.y + 76, `Sent ${res.attack} row${res.attack > 1 ? 's' : ''}!`, '#7ae6dc', 17);
-    if (res.cancelled > 0) this.popup(at.x, at.y + 100, `Blocked ${res.cancelled}!`, '#7ee787', 17);
+    if (res.attack > 0) floatText(this, at.x, at.y + 76, `Sent ${res.attack} row${res.attack > 1 ? 's' : ''}!`, '#7ae6dc', 17);
+    if (res.cancelled > 0) floatText(this, at.x, at.y + 100, `Blocked ${res.cancelled}!`, '#7ee787', 17);
     this.refreshIncoming();
     this.sendState();
   }
@@ -819,46 +737,32 @@ export class GameScene extends Phaser.Scene {
   private askLeave(): void {
     if (this.paused || this.state === 'over') return;
     this.paused = true;
-    const c = this.add.container(0, 0).setDepth(200);
-    this.leaveUi = c;
-    c.add(this.add.rectangle(WIDTH / 2, 360, WIDTH, 720, 0x000000, 0.75).setInteractive());
-    c.add(txt(this, WIDTH / 2, 260, 'Leave the match?', 36, '#ffd166'));
-    c.add(txt(this, WIDTH / 2, 312, 'Your opponent wins if you go.', 16, '#c9d1ee', false));
-    c.add(makeButton(this, WIDTH / 2, 400, 260, 52, 'Keep playing', () => {
-      this.paused = false;
-      c.destroy();
-      this.leaveUi = null;
-    }, 0x2e8b57));
-    c.add(makeButton(this, WIDTH / 2, 470, 260, 52, 'Leave', () => this.leave(), 0x8a3b3b));
+    this.leaveUi = showLeaveQuestion(
+      this,
+      () => {
+        this.paused = false;
+        this.leaveUi?.destroy();
+        this.leaveUi = null;
+      },
+      () => this.leave(),
+    );
   }
 
-  private showVersusOverlay(won: boolean, reason?: CloseReason): void {
+  private showVersusResult(won: boolean, reason?: CloseReason): void {
     const e = this.engine;
-    const c = this.add.container(0, 0).setDepth(100);
-    c.add(this.add.rectangle(WIDTH / 2, 360, WIDTH, 720, 0x000000, 0.7).setInteractive());
-    c.add(txt(this, WIDTH / 2, 170, won ? 'YOU WIN!' : 'YOU LOSE', 60, won ? '#ffd166' : '#ff8a8a'));
-    const why = reason === 'left' ? 'Your opponent left the match' : reason === 'timeout' ? 'Lost contact with your opponent' : '';
-    if (why) c.add(txt(this, WIDTH / 2, 226, why, 16, '#c9d1ee', false));
-    c.add(txt(this, WIDTH / 2, 268, `Score ${e.score}  vs  ${this.panel?.score ?? 0}`, 24));
-    c.add(txt(this, WIDTH / 2, 304, `Rows sent ${e.sent}  ·  rows taken ${e.received}  ·  best combo x${e.bestCombo}`, 14, '#c9d1ee', false));
-    if (this.net?.role === 'host') {
-      this.rematchBtn = makeButton(this, WIDTH / 2, 390, 260, 54, 'Rematch', () => this.startRematch(), 0x2e8b57);
-      c.add(this.rematchBtn);
-    }
-    this.rematchNote = txt(this, WIDTH / 2, 390, '', 16, '#c9d1ee', false);
-    c.add(this.rematchNote);
-    c.add(makeButton(this, WIDTH / 2, 470, 260, 54, 'Leave', () => this.leave(), 0x59627f));
-    this.updateRematch();
-  }
-
-  /** The host's button, or for the guest a note, depending on who is still here. */
-  private updateRematch(): void {
-    if (!this.rematchNote) return;
-    if (this.opponentGone) {
-      this.rematchBtn?.destroy();
-      this.rematchBtn = null;
-      this.rematchNote.setText('Your opponent has left.');
-    } else if (this.net?.role === 'guest') this.rematchNote.setText('Waiting for the host to start a rematch…');
+    this.versusResult = showVersusResult(this, {
+      won,
+      reason,
+      score: e.score,
+      opponentScore: this.panel?.score ?? 0,
+      sent: e.sent,
+      received: e.received,
+      bestCombo: e.bestCombo,
+      isHost: this.net?.role === 'host',
+      opponentGone: this.opponentGone,
+      rematch: () => this.startRematch(),
+      leave: () => this.leave(),
+    });
   }
 
   private startRematch(): void {
@@ -885,30 +789,20 @@ export class GameScene extends Phaser.Scene {
     if (!on) {
       this.pauseUi?.destroy();
       this.pauseUi = null;
-      this.nextHint();
+      this.hints.resume();
       return;
     }
-    const c = this.add.container(0, 0).setDepth(200);
-    this.pauseUi = c;
-    c.add(this.add.rectangle(WIDTH / 2, 360, WIDTH, 720, 0x000000, 0.75).setInteractive());
-    c.add(txt(this, WIDTH / 2, 150, 'PAUSED', 54, '#ffd166'));
-    const label = (b: Phaser.GameObjects.Container) => b.list[1] as Phaser.GameObjects.Text;
-    const toggle = (y: number, text: () => string, flip: () => void): Phaser.GameObjects.Container => {
-      const b: Phaser.GameObjects.Container = makeButton(this, WIDTH / 2, y, 280, 48, text(), () => {
-        flip();
-        label(b).setText(text());
-      }, 0x59627f);
-      return b;
-    };
-    c.add(makeButton(this, WIDTH / 2, 235, 280, 48, 'Resume', () => this.setPaused(false), 0x2e8b57));
-    c.add(makeButton(this, WIDTH / 2, 293, 280, 48, 'Restart', () => this.restart(), 0x2f6fdd));
-    c.add(toggle(351, () => `Sound: ${isMutedNow() ? 'off' : 'on'}`, () => {
-      toggleMute();
-      this.muteText.setText(isMutedNow() ? '🔇' : '🔊');
-    }));
-    c.add(toggle(409, () => `Music: ${getMusic() ? 'on' : 'off'}`, () => void toggleMusic()));
-    c.add(toggle(467, () => `Screen shake: ${getShake() ? 'on' : 'off'}`, () => setShake(!getShake())));
-    c.add(makeButton(this, WIDTH / 2, 525, 280, 48, this.data0.from === 'editor' ? 'Back to editor' : 'Menu', () => this.leave(), 0x8a3b3b));
-    c.add(txt(this, WIDTH / 2, 575, 'P or Esc to resume', 14, '#9aa6cf', false));
+    this.pauseUi = showPauseMenu(this, {
+      resume: () => this.setPaused(false),
+      restart: () => this.restart(),
+      leaveLabel: this.leaveLabel(),
+      leave: () => this.leave(),
+      soundLabel: () => `Sound: ${isMutedNow() ? 'off' : 'on'}`,
+      toggleSound: () => this.toggleSound(),
+      musicLabel: () => `Music: ${getMusic() ? 'on' : 'off'}`,
+      toggleMusic: () => void toggleMusic(),
+      shakeLabel: () => `Screen shake: ${getShake() ? 'on' : 'off'}`,
+      toggleShake: () => setShake(!getShake()),
+    });
   }
 }

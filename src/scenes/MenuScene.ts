@@ -5,7 +5,8 @@ import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
 import { getBest, getBestTime, getMusic, getShake, isSent, setShake } from '../game/storage';
 import { isMutedNow, toggleMute, unlockAudio } from '../game/audio';
 import { toggleMusic } from '../game/music';
-import { makeButton, txt } from '../ui';
+import { formatTime } from '../game/format';
+import { makeButton, makeToggle, txt } from '../ui';
 
 const PAGE = 12;
 let menuPage: number | null = null; // remembered while the page is open
@@ -21,7 +22,7 @@ export class MenuScene extends Phaser.Scene {
       const h = this.add.image(90 + i * 90, 70, `hold-${i}`).setScale(1.2);
       this.tweens.add({ targets: h, y: 80, duration: 900 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     }
-    txt(this, WIDTH / 2, 150, 'CRIMP & POP', 54, '#ffd166');
+    txt(this, WIDTH / 2, 150, 'BETA BLAST', 58, '#ffd166');
     txt(this, WIDTH / 2, 198, 'Shoot the holds. Send the route.', 18, '#c9d1ee', false);
 
     const daily = dailyLevel();
@@ -29,7 +30,7 @@ export class MenuScene extends Phaser.Scene {
     txt(this, 140, 298, `Best today: ${getBest(daily.id)}`, 14, '#c9d1ee', false);
     makeButton(this, 400, 262, 250, 52, 'Survival', () => this.play(survivalLevel()), 0xc23b5a, 22);
     const longest = getBestTime('survival');
-    txt(this, 400, 298, longest ? `Best ${getBest('survival')} · longest ${Math.floor(longest / 60)}:${String(longest % 60).padStart(2, '0')}` : 'How long can you last?', 14, '#c9d1ee', false);
+    txt(this, 400, 298, longest ? `Best ${getBest('survival')} · longest ${formatTime(longest)}` : 'How long can you last?', 14, '#c9d1ee', false);
 
     // Grades never run out, so they come in pages of 12. Open on the page with your first unsent grade.
     if (menuPage === null) {
@@ -66,13 +67,7 @@ export class MenuScene extends Phaser.Scene {
     const help = ['Aim with mouse / touch, release to shoot. Arrows + Space work too.', 'Tap NEXT or press S to swap. P pauses.'];
     help.forEach((line, i) => txt(this, WIDTH / 2, 650 + i * 18, line, 13, '#9aa6cf', false));
 
-    const label = (b: Phaser.GameObjects.Container) => b.list[1] as Phaser.GameObjects.Text;
-    const toggle = (x: number, text: () => string, flip: () => void): void => {
-      const b: Phaser.GameObjects.Container = makeButton(this, x, 695, 160, 32, text(), () => {
-        flip();
-        label(b).setText(text());
-      }, 0x59627f, 14);
-    };
+    const toggle = (x: number, label: () => string, flip: () => void) => makeToggle(this, x, 695, 160, 32, label, flip, 14);
     toggle(95, () => `Sound: ${isMutedNow() ? 'off' : 'on'}`, () => void toggleMute());
     toggle(270, () => `Music: ${getMusic() ? 'on' : 'off'}`, () => void toggleMusic());
     toggle(445, () => `Shake: ${getShake() ? 'on' : 'off'}`, () => setShake(!getShake()));

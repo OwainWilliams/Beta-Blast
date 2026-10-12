@@ -21,10 +21,11 @@ export interface Hold {
   hp?: number; // obstacles only
 }
 
+export type Cell = [number, number];
+
 export function makeHold(type: number): Hold {
   return type === VOLUME ? { type, hp: 2 } : type === SLICK ? { type, hp: 1 } : { type };
 }
-export type Cell = [number, number];
 
 export class Grid {
   rows: (Hold | null)[][] = [];
@@ -183,18 +184,23 @@ export class Grid {
     return out;
   }
   count(): number {
-    return this.cells().length;
+    let n = 0;
+    for (const row of this.rows) for (const h of row) if (h) n++;
+    return n;
   }
+  /** The row of the lowest hold, or -1 for an empty wall. */
   lowestRow(): number {
-    const cells = this.cells();
-    return cells.length ? Math.max(...cells.map(([r]) => r)) : -1;
+    for (let r = this.rows.length - 1; r >= 0; r--) if (this.rows[r].some(Boolean)) return r;
+    return -1;
   }
+  /** The colours still on the wall, in order. */
   presentTypes(): number[] {
     const set = new Set<number>();
-    for (const [r, c] of this.cells()) {
-      const t = this.get(r, c)!.type;
-      if (isColour(t)) set.add(t);
-    }
-    return [...set].sort();
+    for (const row of this.rows) for (const h of row) if (h && isColour(h.type)) set.add(h.type);
+    return [...set].sort((a, b) => a - b);
+  }
+  /** Is there anything left to pop? Cheaper than presentTypes() when only a yes or no is needed. */
+  hasColour(): boolean {
+    return this.rows.some((row) => row.some((h) => h && isColour(h.type)));
   }
 }

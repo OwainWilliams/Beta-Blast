@@ -109,7 +109,7 @@ class LocalTransport implements Transport {
   }
 }
 
-const channelName = (code: string) => `crimp-and-pop-local-${code}`;
+const channelName = (code: string) => `beta-blast-local-${code}`;
 
 function hostLocal(): HostHandle {
   const code = newCode();
@@ -159,6 +159,12 @@ function peerOptions() {
   };
 }
 
+/**
+ * Errors about the connection to the matchmaking service. Once two players are connected directly
+ * the match does not depend on that service, so these must not end it.
+ */
+const MATCHMAKER_ERRORS = new Set<string>(['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected']);
+
 class PeerTransport implements Transport {
   private msgCbs: ((m: Msg) => void)[] = [];
   private closeCbs: (() => void)[] = [];
@@ -171,7 +177,9 @@ class PeerTransport implements Transport {
     });
     conn.on('close', () => this.end());
     conn.on('error', () => this.end());
-    peer.on('error', () => this.end());
+    peer.on('error', (err) => {
+      if (!MATCHMAKER_ERRORS.has(err.type)) this.end();
+    });
   }
   send(msg: Msg): void {
     if (this.closed) return;
@@ -214,15 +222,25 @@ const failureFor = (err: PeerError<string>): ConnectFailure => {
   }
 };
 
+/** Resolves with the first value `setup` reports, or `onTimeout` after `ms`. The timer never outlives the wait. */
+function firstOf<T>(ms: number, onTimeout: T, setup: (settle: (value: T) => void) => void): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(onTimeout), ms);
+    setup((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    });
+  });
+}
+
 /** Register a fresh keyword with the broker, retrying if someone else is already using it. */
 async function hostPeer(): Promise<HostHandle> {
   for (let attempt = 0; attempt < 6; attempt++) {
     const code = newCode();
     const peer = new Peer(peerIdFor(code), peerOptions());
-    const outcome = await new Promise<'open' | ConnectFailure | 'taken'>((resolve) => {
-      peer.on('open', () => resolve('open'));
-      peer.on('error', (err) => resolve(err.type === 'unavailable-id' ? 'taken' : failureFor(err)));
-      setTimeout(() => resolve('network'), CONNECT_TIMEOUT_MS);
+    const outcome = await firstOf<'open' | 'taken' | ConnectFailure>(CONNECT_TIMEOUT_MS, 'network', (settle) => {
+      peer.on('open', () => settle('open'));
+      peer.on('error', (err) => settle(err.type === 'unavailable-id' ? 'taken' : failureFor(err)));
     });
     if (outcome === 'taken') {
       peer.destroy();
@@ -232,6 +250,11 @@ async function hostPeer(): Promise<HostHandle> {
       peer.destroy();
       throw new ConnectError(outcome);
     }
+    // While waiting for an opponent the keyword has to stay registered: if the matchmaking
+    // connection drops, reconnect so the keyword keeps working.
+    peer.on('disconnected', () => {
+      if (!peer.destroyed) peer.reconnect();
+    });
     const accepted = new Promise<Transport>((resolve) => {
       let taken = false;
       peer.on('connection', (conn) => {
@@ -247,22 +270,22 @@ async function hostPeer(): Promise<HostHandle> {
 
 async function joinPeer(code: string): Promise<Transport> {
   const peer = new Peer(peerOptions());
-  try {
-    await new Promise<void>((resolve, reject) => {
-      peer.on('open', () => resolve());
-      peer.on('error', (err) => reject(new ConnectError(failureFor(err))));
-      setTimeout(() => reject(new ConnectError('network')), CONNECT_TIMEOUT_MS);
-    });
-    return await new Promise<Transport>((resolve, reject) => {
-      const conn = peer.connect(peerIdFor(code), { reliable: true, serialization: 'json' });
-      peer.on('error', (err) => reject(new ConnectError(failureFor(err))));
-      conn.on('open', () => resolve(new PeerTransport(peer, conn)));
-      setTimeout(() => reject(new ConnectError('timeout')), CONNECT_TIMEOUT_MS);
-    });
-  } catch (e) {
+  const fail = (reason: ConnectFailure) => {
     peer.destroy();
-    throw e;
-  }
+    return new ConnectError(reason);
+  };
+  const opened = await firstOf<'open' | ConnectFailure>(CONNECT_TIMEOUT_MS, 'network', (settle) => {
+    peer.on('open', () => settle('open'));
+    peer.on('error', (err) => settle(failureFor(err)));
+  });
+  if (opened !== 'open') throw fail(opened);
+  const conn = peer.connect(peerIdFor(code), { reliable: true, serialization: 'json' });
+  const connected = await firstOf<'open' | ConnectFailure>(CONNECT_TIMEOUT_MS, 'timeout', (settle) => {
+    conn.on('open', () => settle('open'));
+    peer.on('error', (err) => settle(failureFor(err)));
+  });
+  if (connected !== 'open') throw fail(connected);
+  return new PeerTransport(peer, conn);
 }
 
 // ---------- entry points ----------
