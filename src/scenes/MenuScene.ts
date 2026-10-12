@@ -60,6 +60,7 @@ export class MenuScene extends Phaser.Scene {
       txt(this, x, y + 34, `best ${getBest(level.id)}`, 12, '#9aa6cf', false);
     }
 
+    makeButton(this, WIDTH - 70, 24, 116, 32, 'Leaderboard', () => this.scene.start('Leaderboard'), 0x59627f, 14);
     makeButton(this, 95, 608, 160, 46, 'Route Setter', () => this.scene.start('Editor'), 0x7a4fd0, 17);
     makeButton(this, 270, 608, 160, 46, 'Play a code', () => this.playCode(), 0x7a4fd0, 17);
     makeButton(this, 445, 608, 160, 46, '2 Player', () => this.scene.start('Lobby'), 0x2e8b57, 19);

@@ -5,12 +5,13 @@ import { BOMB, Cell, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
 import { gradeLevel, LevelSpec, survivalLevel, versusLevel } from '../game/levels';
 import { changeGrade, pauseMusic, resumeMusic, setIntensity, startMusic, stopMusic, toggleMusic } from '../game/music';
 import { isMutedNow, sfx, toggleMute, unlockAudio } from '../game/audio';
-import { getBest, getBestTime, getMusic, getShake, recordResult, recordTime, setShake } from '../game/storage';
+import { getBest, getBestTime, getMusic, getPlayerName, getShake, recordResult, recordTime, setShake } from '../game/storage';
 import { ChalkBag, chalkPuff } from '../chalkBag';
 import { chalkBurst, colourRing, confetti, floatText, popWord } from '../effects';
 import { Hints } from '../hints';
-import { showLeaveQuestion, showPauseMenu, showRoundResult, showVersusResult } from '../overlays';
-import { makeClimber, textureFor, txt } from '../ui';
+import { boardFor, postScore } from '../game/leaderboard';
+import { RoundResult, showLeaveQuestion, showPauseMenu, showRoundResult, showVersusResult } from '../overlays';
+import { askName, makeClimber, textureFor, txt } from '../ui';
 import { MAX_ATTACK, MAX_ROWS, Msg } from '../net/protocol';
 import { CloseReason, Session } from '../net/session';
 import { OpponentPanel } from '../versusPanel';
@@ -656,11 +657,25 @@ export class GameScene extends Phaser.Scene {
       bonus,
       flash,
       survival: this.level.survival ? { seconds: e.elapsed, stage: e.stage(), bestSeconds: getBestTime(id), newBestScore: records.score, newBestTime: records.time } : undefined,
+      post: this.leaderboardPost(),
       next: won && !this.level.daily && !this.level.custom ? { label: `Next: V${this.level.grade + 1}`, go: () => this.scene.restart({ level: gradeLevel(this.level.grade + 1) }) } : undefined,
       again: () => this.restart(),
       leaveLabel: this.leaveLabel(),
       leave: () => this.leave(),
     });
+  }
+
+  /** What the results screen needs to post this score, or nothing if this round has no leaderboard. */
+  private leaderboardPost(): RoundResult['post'] {
+    const board = boardFor(this.level);
+    if (!board || this.engine.score <= 0) return undefined;
+    const score = this.engine.score;
+    const seconds = this.engine.elapsed;
+    return {
+      name: getPlayerName(),
+      ask: askName,
+      send: async (name) => (await postScore(board, name, score, seconds)).message,
+    };
   }
 
   private leaveLabel(): string {

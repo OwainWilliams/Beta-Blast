@@ -11,3 +11,6 @@ export const LOSE_Y = R + LOSE_ROW * H;
 
 // Tape colours, like a gym's colour-coded routes.
 export const HOLD_COLOURS = [0xe5484d, 0x3e8ef7, 0x30c46b, 0xf5c518, 0xa05cf0];
+
+/** The leaderboard API (a Cloudflare Worker, see worker/). Set VITE_API_URL to point somewhere else; empty turns the leaderboard off. */
+export const API_URL: string = import.meta.env.VITE_API_URL ?? 'https://beta-blast-api.owaingdwilliams.workers.dev';
