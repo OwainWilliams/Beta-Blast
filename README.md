@@ -84,6 +84,8 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 
 **Route Setter**: build your own route (10 rows, all hold types, pump limit, bombs and mega jugs on/off, row timer off/slow/normal/fast), test it, and share it as a link or code. Anyone opening `?route=CODE` plays it straight away, or use *Play a code* in the menu.
 
+**Leaderboard**: after a grade, the Daily Boulder or a Survival run, pick a name (letters and numbers, up to 12) and post the score. Each grade, each day's Daily and Survival has its own top 10, under *Leaderboard* in the menu. Custom routes and two-player matches have no board. The game works fine if the API is down. Scores are sent from the browser, so the API only checks the numbers are sensible; it can't stop someone determined from faking one.
+
 ## Balance
 
 `npm run balance` has a bot play grades V0 to V20 (set `TOP_GRADE=` for more) and prints win rates at two skill levels, with the row timer running at 2.2 s per shot (`SHOT_SECONDS=`), so difficulty changes can be checked against numbers. It also reports how long the bot lasts in Survival. The bot is greedy and never swaps, so it is a guide, not a replacement for playtesting. Tuning lives in `src/game/levels.ts`.
@@ -100,12 +102,23 @@ src/game/music.ts    procedural background music
 src/game/audio.ts    synthesised sound effects
 src/game/storage.ts  saved scores and settings
 src/net/             protocol, keywords, transports (WebRTC, same-browser, in-memory), match session
-src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby
+src/game/leaderboard.ts  client for the leaderboard API
+src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby, Leaderboard
+worker/              the leaderboard API: a Cloudflare Worker with a D1 database
 src/overlays.ts      result, leave and pause screens
 src/effects.ts       chalk bursts, floating text, confetti
 src/hints.ts         the one-off tips
 tests/               vitest (see below)
 ```
+
+## Leaderboard API
+
+The leaderboard is a small [Cloudflare Worker](https://developers.cloudflare.com/workers/) in `worker/` with a [D1](https://developers.cloudflare.com/d1/) (SQLite) database, both on the free plan. GitHub Pages only serves files, so this is the one moving part.
+
+- `GET /scores?board=v3` returns the top 10. `POST /scores` takes `{ board, name, score, seconds? }` and keeps each name's best score per board.
+- It only accepts posts from the origins listed in `worker/src/index.ts`, limits each address to 10 posts a minute, and rejects out-of-range scores and rude names (`worker/src/rules.ts`).
+- `.github/workflows/deploy-worker.yml` creates the tables (`worker/schema.sql`) and deploys the Worker whenever `worker/` changes on `main`. It needs the repository secrets `CLOUDFLARE_API_TOKEN` (the *Edit Cloudflare Workers* template plus *Account, D1, Edit*) and `CLOUDFLARE_ACCOUNT_ID`.
+- The game finds the API through `API_URL` in `src/config.ts`. Set `VITE_API_URL` to use another one, or to an empty string to switch the leaderboard off.
 
 ## Tests and checks
 
@@ -119,6 +132,7 @@ The rules are pure TypeScript with no Phaser in them, so most of the game is tes
 
 - **Unit tests** for the grid, engine, levels, route codes, saves, music patterns and the network layer. The PeerJS transport is tested against an in-memory stand-in for PeerJS.
 - **Fuzz tests** (`tests/fuzz.test.ts`) play hundreds of random games across every mode and check, after every shot, that the wall is consistent, nothing hangs in mid-air, nothing is removed twice and the score never goes down. They also throw 20,000 junk messages at the network parser. They count which cases they reached, and fail if any (bombs, mega jugs, slick holds, clean sweeps, incoming rows) never came up.
+- The leaderboard tests run the Worker's real SQL against SQLite (Node's built-in `node:sqlite`), using the real `schema.sql`.
 - **CI** runs the type check, the tests and the build on every pull request.
 
 ## Ideas for later

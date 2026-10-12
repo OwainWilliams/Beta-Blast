@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { Hold, VOLUME } from './game/grid';
+import { cleanName, MAX_NAME } from './game/leaderboard';
+import { getPlayerName, setPlayerName } from './game/storage';
 
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
@@ -73,6 +75,15 @@ export async function copyToClipboard(text: string, fallbackMessage: string): Pr
     window.prompt(fallbackMessage, text);
     return false;
   }
+}
+
+/** Ask for the leaderboard name and remember it. Null if the player cancelled or typed nothing usable. */
+export function askName(): string | null {
+  const input = window.prompt(`Your name for the leaderboard (letters and numbers, up to ${MAX_NAME})`, getPlayerName());
+  const name = input === null ? null : cleanName(input);
+  if (name) setPlayerName(name);
+  else if (input !== null) window.alert('Use letters or numbers, up to 12 characters.');
+  return name;
 }
 
 /** Little stick-figure climber, origin at the feet. */

@@ -5,6 +5,7 @@ import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { EditorScene } from './scenes/EditorScene';
 import { LobbyScene } from './scenes/LobbyScene';
+import { LeaderboardScene } from './scenes/LeaderboardScene';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -13,7 +14,7 @@ const game = new Phaser.Game({
   height: HEIGHT,
   backgroundColor: '#14171f',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [BootScene, MenuScene, GameScene, EditorScene, LobbyScene],
+  scene: [BootScene, MenuScene, GameScene, EditorScene, LobbyScene, LeaderboardScene],
 });
 
 // Dev-only handle so browser tests can inspect the running game.

@@ -1,0 +1,8 @@
+name = "beta-blast-api"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "beta-blast-scores"
+database_id = "98e9912b-4730-4eaf-b269-1f970aad67d0"

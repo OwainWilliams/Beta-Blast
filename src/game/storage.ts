@@ -9,16 +9,17 @@ interface Save {
   shake: boolean;
   music: boolean;
   hints: Record<string, boolean>;
+  name: string; // leaderboard name
 }
 
 function load(): Save {
   try {
     const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
-    if (raw) return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, ...JSON.parse(raw) };
+    if (raw) return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, name: '', ...JSON.parse(raw) };
   } catch {
     /* storage unavailable */
   }
-  return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {} };
+  return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, name: '' };
 }
 
 function save(s: Save): void {
@@ -67,4 +68,9 @@ export function recordTime(id: string, seconds: number): void {
   const s = load();
   s.bestTime[id] = Math.max(s.bestTime[id] ?? 0, Math.round(seconds));
   save(s);
+}
+
+export const getPlayerName = (): string => load().name;
+export function setPlayerName(name: string): void {
+  save({ ...load(), name });
 }
