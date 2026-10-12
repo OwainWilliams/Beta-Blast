@@ -1,6 +1,6 @@
 // Beta Blast leaderboard API, on Cloudflare Workers with a D1 (SQLite) database.
-//   GET  /scores?board=v3   -> { board, scores: [{ name, score, seconds }] }   the top 10
-//   POST /scores            -> { rank, best, score }                           body: { board, name, score, seconds?, replay }
+//   GET  /scores?board=v3   -> { board, scores: [{ name, score, seconds, look }] } the top 10 (look: climber outfit code, '' if unknown)
+//   POST /scores            -> { rank, best, score }                           body: { board, name, score, seconds?, look?, replay }
 // The body holds the score and the player's moves. The Worker checks the score is believable for those moves
 // (or, with VERIFY_REPLAYS=1, replays them and uses its own score). One row per player name per board; a new
 // score only replaces the old one if it is higher.
@@ -77,6 +77,10 @@ export default {
         )
           .bind(s.board, s.name, score, seconds, Date.now())
           .run();
+        if (s.look)
+          await env.DB.prepare('INSERT INTO players (name, look, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT (name) DO UPDATE SET look = excluded.look, updated_at = excluded.updated_at')
+            .bind(s.name, s.look, Date.now())
+            .run();
         const row = await env.DB.prepare('SELECT score FROM scores WHERE board = ?1 AND name = ?2').bind(s.board, s.name).first<{ score: number }>();
         const best = row?.score ?? score;
         const ahead = await env.DB.prepare('SELECT COUNT(*) AS n FROM scores WHERE board = ?1 AND score > ?2').bind(s.board, best).first<{ n: number }>();
@@ -91,9 +95,13 @@ export default {
 
 async function top(db: D1, board: string) {
   const { results } = await db
-    .prepare('SELECT name, score, seconds FROM scores WHERE board = ?1 ORDER BY score DESC, created_at ASC LIMIT ?2')
+    .prepare(
+      `SELECT s.name AS name, s.score AS score, s.seconds AS seconds, COALESCE(p.look, '') AS look
+       FROM scores s LEFT JOIN players p ON p.name = s.name
+       WHERE s.board = ?1 ORDER BY s.score DESC, s.created_at ASC LIMIT ?2`,
+    )
     .bind(board, BOARD_SIZE)
-    .all<{ name: string; score: number; seconds: number }>();
+    .all<{ name: string; score: number; seconds: number; look: string }>();
   return results;
 }
 

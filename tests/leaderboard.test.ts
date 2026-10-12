@@ -44,6 +44,9 @@ describe('the rules', () => {
     [{ board: 'v3', name: 'Sam', score: '100', replay: REPLAY }],
     [{ board: 'v3', name: 'Sam', score: 1e10, replay: REPLAY }],
     [{ board: 'v3', name: 'Sam', score: 5, seconds: -1, replay: REPLAY }],
+    [{ board: 'v3', name: 'Sam', look: '999', ...BODY }],
+    [{ board: 'v3', name: 'Sam', look: '20', ...BODY }],
+    [{ board: 'v3', name: 'Sam', look: 203, ...BODY }],
     [null],
     ['text'],
   ])('refuses %j', (body) => expect(typeof parseSubmission(body)).toBe('string'));
@@ -120,7 +123,7 @@ describe('the Worker, replaying every post (VERIFY_REPLAYS=1)', () => {
     expect(played.ended).toBe(true);
     await call(env, 'POST', '/scores', { board: 'survival', name: 'Sam', replay: played.replay });
     const s = (await (await call(env, 'GET', '/scores?board=survival')).json()) as { scores: unknown[] };
-    expect(s.scores).toEqual([{ name: 'Sam', score: played.score, seconds: Math.round(played.seconds) }]);
+    expect(s.scores).toEqual([{ name: 'Sam', score: played.score, seconds: Math.round(played.seconds), look: '' }]);
     expect(((await (await call(env, 'GET', '/scores?board=v1')).json()) as { scores: unknown[] }).scores).toEqual([]);
 
     const r = round(2, 7);
@@ -188,7 +191,7 @@ describe('the Worker, checking scores are believable (the default)', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ rank: 1, best: r.score, score: r.score });
     const top = (await (await call(env, 'GET', '/scores?board=v3')).json()) as { scores: unknown[] };
-    expect(top.scores).toEqual([{ name: 'Sam', score: r.score, seconds: 0 }]);
+    expect(top.scores).toEqual([{ name: 'Sam', score: r.score, seconds: 0, look: '' }]);
   });
 
   it('refuses absurd scores, however they are packaged', async () => {
@@ -210,6 +213,18 @@ describe('the Worker, checking scores are believable (the default)', () => {
     expect((await post({ board: 'survival', name: 'Zero', score: played.score, seconds: 0, replay: played.replay })).status).toBe(400);
     expect((await post({ board: 'survival', name: 'NoSeed', score: played.score, seconds, replay: { ...played.replay, seed: undefined } })).status).toBe(400);
     expect((await post({ board: 'v3', name: 'Timed', score: 100, seconds: 30, replay: played.replay })).status).toBe(400); // only survival has a time
+  });
+
+  it('stores each player\'s look, shows it on every board, and keeps the latest', async () => {
+    const r = round(3, 1);
+    const r2 = round(2, 1);
+    await post({ board: 'v3', name: 'Ann', score: r.score, look: '203', replay: r.replay });
+    await post({ board: 'v3', name: 'Bob', score: r.score, replay: r.replay }, { Origin: ORIGIN, 'CF-Connecting-IP': '9.9.9.9' }); // no look sent
+    await post({ board: 'v2', name: 'ann', score: r2.score, look: '715', replay: r2.replay }); // same player, new outfit, different case
+    const looks = async (board: string) => ((await (await call(env, 'GET', `/scores?board=${board}`)).json()) as { scores: { name: string; look: string }[] }).scores.map((e) => [e.name, e.look]);
+    expect(await looks('v2')).toEqual([['ann', '715']]);
+    expect(await looks('v3')).toEqual([['Ann', '715'], ['Bob', '']]); // the newest look follows the player everywhere
+    expect((await post({ board: 'v3', name: 'Cat', score: r.score, look: '999', replay: r.replay })).status).toBe(400);
   });
 
   it('closes old Daily boards', async () => {
@@ -269,13 +284,13 @@ describe('the game’s side', () => {
   it('posts a replay and reports how it went', async () => {
     const f = vi.fn(async () => Response.json({ rank: 3, best: 900, score: 900 }));
     vi.stubGlobal('fetch', f);
-    expect(await postScore('v3', 'Ann', 900, 0, REPLAY)).toEqual({ ok: true, message: 'Leaderboard rank #3' });
-    expect(JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ board: 'v3', name: 'Ann', score: 900, seconds: 0, replay: REPLAY });
+    expect(await postScore('v3', 'Ann', 900, 0, '203', REPLAY)).toEqual({ ok: true, message: 'Leaderboard rank #3' });
+    expect(JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ board: 'v3', name: 'Ann', score: 900, seconds: 0, look: '203', replay: REPLAY });
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ rank: 2, best: 1500, score: 900 })));
-    expect((await postScore('v3', 'Ann', 900, 0, REPLAY)).message).toBe('Your best here is 1500 (rank #2)');
+    expect((await postScore('v3', 'Ann', 900, 0, '203', REPLAY)).message).toBe('Your best here is 1500 (rank #2)');
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'Replay rejected: The run did not finish' }, { status: 400 })));
-    expect(await postScore('v3', 'x', 5, 0, REPLAY)).toEqual({ ok: false, message: 'Replay rejected: The run did not finish' });
+    expect(await postScore('v3', 'x', 5, 0, '000', REPLAY)).toEqual({ ok: false, message: 'Replay rejected: The run did not finish' });
     vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('offline'))));
-    expect(await postScore('v3', 'Ann', 900, 0, REPLAY)).toEqual({ ok: false, message: "Couldn't reach the leaderboard" });
+    expect(await postScore('v3', 'Ann', 900, 0, '203', REPLAY)).toEqual({ ok: false, message: "Couldn't reach the leaderboard" });
   });
 });

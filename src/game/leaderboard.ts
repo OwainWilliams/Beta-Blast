@@ -7,6 +7,7 @@ export interface Entry {
   name: string;
   score: number;
   seconds: number;
+  look: string; // climber outfit code; '' if they haven't picked one
 }
 
 export const MAX_NAME = 12;
@@ -58,11 +59,11 @@ export async function fetchTop(board: string): Promise<Entry[] | null> {
 }
 
 /** Post a finished round with the moves that made it, so the server can check the score is believable. */
-export async function postScore(board: string, name: string, score: number, seconds: number, replay: Replay): Promise<{ ok: boolean; message: string }> {
+export async function postScore(board: string, name: string, score: number, seconds: number, look: string, replay: Replay): Promise<{ ok: boolean; message: string }> {
   const data = await call<{ rank: number; best: number; score: number }>('/scores', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ board, name, score, seconds: board === 'survival' ? Math.round(seconds) : 0, replay }),
+    body: JSON.stringify({ board, name, score, seconds: board === 'survival' ? Math.round(seconds) : 0, look, replay }),
   });
   if (!data) return { ok: false, message: "Couldn't reach the leaderboard" };
   if ('error' in data) return { ok: false, message: data.error };

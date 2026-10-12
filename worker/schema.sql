@@ -16,3 +16,11 @@ CREATE TABLE IF NOT EXISTS hits (
   n INTEGER NOT NULL,
   PRIMARY KEY (ip, minute)
 );
+
+-- What each player's climber looks like (a look code, see src/game/looks.ts). One row per name, updated
+-- on every post, so their icon is the same on every board.
+CREATE TABLE IF NOT EXISTS players (
+  name TEXT NOT NULL COLLATE NOCASE PRIMARY KEY,
+  look TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);

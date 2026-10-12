@@ -20,6 +20,7 @@ const SAVE = {
   bestTime: { survival: 273 },
   sent: { v0: true, v1: true, v2: true, v3: true },
   hints: HINTS,
+  name: 'Owain',
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -185,6 +186,34 @@ try {
   await sleep(500);
   await shot(A, 'two-player');
   await B.close();
+
+  // 8. customising the climber, then the leaderboard showing everyone's (the API is faked, so this works offline)
+  const C = await newPage(context);
+  await C.route('**/*workers.dev/**', (r) => {
+    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type' };
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
+    const scores = [
+      { name: 'Ann', score: 9100, look: '742' },
+      { name: 'Owain', score: 8200, look: '151' },
+      { name: 'Sam', score: 7400, look: '270' },
+      { name: 'ClimbKing99', score: 6900, look: '507' },
+      { name: 'Pip', score: 5100, look: '365' },
+      { name: 'Bob', score: 3000, look: '' },
+    ].map((e) => ({ seconds: 0, ...e }));
+    return r.fulfill({ json: { board: 'v3', scores }, headers: cors });
+  });
+  await inPage(C, `game.scene.getScene('Menu').scene.start('Customise');`);
+  await sleep(800);
+  for (const [x, y] of [[52 + 62, 335], [52 + 5 * 62, 425], [52 + 62, 515]]) {
+    await C.mouse.click(x, y); // red beanie, teal shirt, blue chalk bag
+    await sleep(250);
+  }
+  await C.mouse.click(52 + 7 * 62, 335); // a locked one, to show how it is earned
+  await sleep(500);
+  await shot(C, 'customise');
+  await inPage(C, `game.scene.getScene('Customise').scene.start('Leaderboard', { board: 'v3' });`);
+  await sleep(1000);
+  await shot(C, 'leaderboard');
 } finally {
   await browser.close();
   server.kill();
