@@ -13,3 +13,6 @@ export const LOSE_Y = R + LOSE_ROW * H;
 export const HOLD_COLOURS = [0xe5484d, 0x3e8ef7, 0x30c46b, 0xf5c518, 0xa05cf0];
 
 export { DEFAULT_API_URL as API_URL } from './apiUrl';
+
+/** Where players report problems. */
+export const ISSUES_URL = 'https://github.com/OwainWilliams/Beta-Blast/issues/new';

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { WIDTH } from '../config';
+import { ISSUES_URL, WIDTH } from '../config';
 import { dailyLevel, gradeLevel, LevelSpec, survivalLevel } from '../game/levels';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
 import { getBest, getBestTime, getMusic, getShake, isSent, setShake } from '../game/storage';
@@ -24,7 +24,7 @@ export class MenuScene extends Phaser.Scene {
     }
     txt(this, WIDTH / 2, 144, 'BETA BLAST', 56, '#ffd166');
     txt(this, WIDTH / 2, 186, 'Shoot the holds. Send the route.', 17, '#c9d1ee', false);
-    this.betaBadge(466, 116);
+    this.previewStamp(472, 114);
 
     // The ways to play: two solo modes side by side, then the versus mode.
     const daily = dailyLevel();
@@ -75,14 +75,25 @@ export class MenuScene extends Phaser.Scene {
     toggle(270, () => `Music: ${getMusic() ? 'on' : 'off'}`, () => void toggleMusic());
     toggle(445, () => `Shake: ${getShake() ? 'on' : 'off'}`, () => setShake(!getShake()));
 
+    this.issuesLink(WIDTH / 2, 708);
+
     this.input.once('pointerdown', unlockAudio);
   }
 
-  /** A tilted "BETA" stamp: the game is still being built. */
-  private betaBadge(x: number, y: number): void {
+  /** A small "report a problem" link to the project's issues on GitHub. */
+  private issuesLink(x: number, y: number): void {
+    const link = txt(this, x, y, 'Found a bug? Report it on GitHub', 12, '#9aa6cf', false).setInteractive({ useHandCursor: true });
+    this.add.rectangle(x, y + 8, link.width, 1, 0x9aa6cf, 0.7); // underline, so it reads as a link
+    link.on('pointerover', () => link.setColor('#ffd166'));
+    link.on('pointerout', () => link.setColor('#9aa6cf'));
+    link.on('pointerup', () => window.open(ISSUES_URL, '_blank', 'noopener,noreferrer'));
+  }
+
+  /** A tilted "PREVIEW" stamp: the game is still being built. ("Beta" means route information to climbers.) */
+  private previewStamp(x: number, y: number): void {
     const stamp = this.add.container(x, y).setAngle(10);
-    stamp.add(this.add.rectangle(0, 0, 58, 24, 0xd9622b).setStrokeStyle(2, 0xffffff, 0.8));
-    stamp.add(txt(this, 0, 0, 'BETA', 15));
+    stamp.add(this.add.rectangle(0, 0, 86, 24, 0xd9622b).setStrokeStyle(2, 0xffffff, 0.8));
+    stamp.add(txt(this, 0, 0, 'PREVIEW', 15));
     this.tweens.add({ targets: stamp, angle: 6, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
   }
 
