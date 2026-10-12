@@ -3,6 +3,7 @@ import worker from '../worker/src/index';
 import { gradeLevel } from '../src/game/levels';
 import { playBot } from './bot';
 import { fakeD1 } from './fakeD1';
+import { fakeProviders, googleClaims } from './providers';
 
 const API = 'https://api.example';
 const GAME = 'https://thesecretstage.vip';
@@ -11,36 +12,6 @@ type Env = { DB: ReturnType<typeof fakeD1>; GH_CLIENT_ID?: string; GH_CLIENT_SEC
 
 let env: Env;
 const full = (): Env => ({ DB: fakeD1(), GH_CLIENT_ID: 'ghid', GH_CLIENT_SECRET: 'ghsecret', GOOGLE_CLIENT_ID: 'gid', GOOGLE_CLIENT_SECRET: 'gsecret' });
-
-// ---------- a pretend GitHub and Google ----------
-
-const jwt = (claims: object) => `h.${btoa(JSON.stringify(claims)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}.s`;
-const people: Record<string, string> = { 'gh-good': '1001', 'gh-other': '1002', 'g-good': 'google-sub-1' };
-let googleClaims: Record<string, unknown> = {};
-
-function stubProviders() {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === 'https://github.com/login/oauth/access_token') {
-        const body = JSON.parse(String(init?.body));
-        expect(body.client_secret).toBe('ghsecret');
-        return Response.json(people[body.code]?.startsWith('1') ? { access_token: `tok-${body.code}` } : { error: 'bad_verification_code' });
-      }
-      if (url === 'https://api.github.com/user') {
-        const code = String((init?.headers as Record<string, string>).Authorization).replace('Bearer tok-', '');
-        return Response.json({ id: Number(people[code]), login: 'secret-login' });
-      }
-      if (url === 'https://oauth2.googleapis.com/token') {
-        const form = new URLSearchParams(String(init?.body));
-        if (form.get('code') !== 'g-good') return Response.json({ error: 'invalid_grant' });
-        return Response.json({ id_token: jwt({ iss: 'https://accounts.google.com', aud: 'gid', sub: people['g-good'], exp: Math.floor(Date.now() / 1000) + 600, ...googleClaims }) });
-      }
-      throw new Error(`unexpected fetch ${url}`);
-    }),
-  );
-}
 
 // ---------- calls ----------
 
@@ -69,8 +40,8 @@ const rows = async (sql: string, ...args: unknown[]) => (await env.DB.prepare(sq
 
 beforeEach(() => {
   env = full();
-  googleClaims = {};
-  stubProviders();
+  googleClaims.override = {};
+  vi.stubGlobal('fetch', fakeProviders());
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -182,7 +153,7 @@ describe('finishing a sign-in', () => {
 
   it('does not accept a Google token meant for someone else, or an out-of-date one', async () => {
     for (const claims of [{ aud: 'someone-else' }, { iss: 'https://evil.example' }, { exp: 1 }, { sub: '' }]) {
-      googleClaims = claims;
+      googleClaims.override = claims;
       const res = await callback('google', { code: 'g-good', state: stateOf(await start('google')) });
       expect(res.headers.get('Location')).toBe(`${RETURN}#login_error=failed`);
     }

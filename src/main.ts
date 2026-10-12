@@ -7,6 +7,8 @@ import { EditorScene } from './scenes/EditorScene';
 import { LobbyScene } from './scenes/LobbyScene';
 import { LeaderboardScene } from './scenes/LeaderboardScene';
 import { CustomiseScene } from './scenes/CustomiseScene';
+import { AccountScene } from './scenes/AccountScene';
+import { startAccount } from './game/account';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -15,8 +17,11 @@ const game = new Phaser.Game({
   height: HEIGHT,
   backgroundColor: '#14171f',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [BootScene, MenuScene, GameScene, EditorScene, LobbyScene, LeaderboardScene, CustomiseScene],
+  scene: [BootScene, MenuScene, GameScene, EditorScene, LobbyScene, LeaderboardScene, CustomiseScene, AccountScene],
 });
 
 // Dev-only handle so browser tests can inspect the running game.
 if (import.meta.env.DEV) (window as unknown as { __game: Phaser.Game }).__game = game;
+
+// Finish a sign-in the page was opened for, or refresh the saved account.
+void startAccount();

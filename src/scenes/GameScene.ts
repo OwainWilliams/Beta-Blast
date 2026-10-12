@@ -6,10 +6,11 @@ import { BOMB, Cell, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
 import { gradeLevel, LevelSpec, survivalLevel, versusLevel } from '../game/levels';
 import { changeGrade, pauseMusic, resumeMusic, setIntensity, startMusic, stopMusic, toggleMusic } from '../game/music';
 import { isMutedNow, sfx, toggleMute, unlockAudio } from '../game/audio';
-import { getBest, getBestTime, getLookCode, getMusic, getPlayerName, getShake, recordResult, recordTime, setShake } from '../game/storage';
+import { getAuth, getBest, getBestTime, getLookCode, getMusic, getPlayerName, getShake, recordResult, recordTime, setShake } from '../game/storage';
 import { ChalkBag, chalkPuff } from '../chalkBag';
 import { chalkBurst, colourRing, confetti, floatText, popWord } from '../effects';
 import { Hints } from '../hints';
+import { chooseName } from '../game/account';
 import { boardFor, postScore, rememberBoard } from '../game/leaderboard';
 import { RoundResult, showLeaveQuestion, showPauseMenu, showRoundResult, showVersusResult } from '../overlays';
 import { askName, Climber, makeClimber, textureFor, txt } from '../ui';
@@ -701,7 +702,14 @@ export class GameScene extends Phaser.Scene {
     return {
       name: getPlayerName(),
       ask: askName,
-      send: (name) => postScore(board, name, score, seconds, getLookCode(), replay),
+      send: async (name) => {
+        // signed in but no account name yet: the name chosen here becomes the account's
+        if (getAuth() && !getAuth()!.name) {
+          const named = await chooseName(name);
+          if (!named.ok) return named;
+        }
+        return postScore(board, name, score, seconds, getLookCode(), replay);
+      },
       view: () => this.scene.start('Leaderboard', { board }),
     };
   }
