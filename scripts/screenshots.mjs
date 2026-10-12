@@ -157,14 +157,14 @@ try {
   await inPage(A, `game.scene.getScene('Game').scene.start('Menu');`);
   const B = await newPage(context);
   await sleep(600);
-  await A.mouse.click(445, 608); // 2 Player
+  await A.mouse.click(270, 332); // 2 Player
   await sleep(600);
   await A.mouse.click(150, 492); // host in this tab
   await sleep(900);
   await shot(A, 'lobby');
   const keyword = await inPage(A, `return game.scene.getScene('Lobby').host.code;`);
   B.on('dialog', (d) => d.accept(keyword));
-  await B.mouse.click(445, 608);
+  await B.mouse.click(270, 332);
   await sleep(600);
   await B.mouse.click(390, 492); // join from another tab
   await sleep(1800);
