@@ -105,7 +105,7 @@ describe('the Worker, replaying every post (VERIFY_REPLAYS=1)', () => {
     expect(played.ended).toBe(true);
     await call(env, 'POST', '/scores', { board: 'survival', name: 'Sam', replay: played.replay });
     const s = (await (await call(env, 'GET', '/scores?board=survival')).json()) as { scores: unknown[] };
-    expect(s.scores).toEqual([{ name: 'Sam', score: played.score, seconds: Math.round(played.seconds), look: '' }]);
+    expect(s.scores).toEqual([{ name: 'Sam', score: played.score, seconds: Math.round(played.seconds), look: '', verified: false }]);
     expect(((await (await call(env, 'GET', '/scores?board=v1')).json()) as { scores: unknown[] }).scores).toEqual([]);
 
     const r = round(2, 7);
@@ -173,7 +173,7 @@ describe('the Worker, checking scores are believable (the default)', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ rank: 1, best: r.score, score: r.score });
     const top = (await (await call(env, 'GET', '/scores?board=v3')).json()) as { scores: unknown[] };
-    expect(top.scores).toEqual([{ name: 'Sam', score: r.score, seconds: 0, look: '' }]);
+    expect(top.scores).toEqual([{ name: 'Sam', score: r.score, seconds: 0, look: '', verified: false }]);
   });
 
   it('refuses absurd scores, however they are packaged', async () => {

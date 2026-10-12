@@ -24,3 +24,39 @@ CREATE TABLE IF NOT EXISTS players (
   look TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+-- Accounts (sign in with GitHub or Google). We keep only the provider's id for the person, never an email.
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  name TEXT COLLATE NOCASE UNIQUE,      -- the leaderboard name they chose; null until they do
+  created_at INTEGER NOT NULL,
+  UNIQUE (provider, provider_id)
+);
+-- Logged-in devices. Only a hash of the token is stored.
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_by_user ON sessions (user_id);
+-- A sign-in in progress (one use, ten minutes), and the one-time code that hands the result to the game.
+CREATE TABLE IF NOT EXISTS oauth_states (
+  state TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  return_to TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS login_codes (
+  code_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+-- The cloud copy of a player's save (best scores, grades sent, outfit).
+CREATE TABLE IF NOT EXISTS saves (
+  user_id TEXT PRIMARY KEY,
+  data TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);

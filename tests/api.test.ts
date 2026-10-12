@@ -75,7 +75,7 @@ describe('the public read API', () => {
     const body = await json(res);
     expect(body).toMatchObject({ board: 'v3', title: 'V3', kind: 'grade' });
     expect(body.scores.map((s: { rank: number; name: string }) => [s.rank, s.name])).toEqual([[1, 'Ann'], [2, 'Bob'], [3, 'Cat']]);
-    expect(body.scores[0]).toEqual({ rank: 1, name: 'Ann', score: 900, seconds: 0, look: '741', outfit: { beanie: '#f5c518', shirt: '#a05cf0', bag: '#2f6fdd' } });
+    expect(body.scores[0]).toEqual({ rank: 1, name: 'Ann', score: 900, seconds: 0, look: '741', outfit: { beanie: '#f5c518', shirt: '#a05cf0', bag: '#2f6fdd' }, verified: false });
     expect(body.scores[1].look).toBe('');
     expect(body.scores[1].outfit).toEqual(outfitOf('000')); // someone with no look gets the starting outfit
   });
