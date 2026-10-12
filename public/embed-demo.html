@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beta Blast leaderboard widgets</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; background: #f4f5f9; color: #1d2233; }
+    h1 { margin-bottom: 4px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; align-items: start; }
+    h2 { font-size: 16px; margin: 0 0 8px; }
+    pre { background: #1d2233; color: #e8ecf8; padding: 10px 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
+    .themed pre { margin-bottom: 8px; }
+    .themed { --bb-bg: #3b1d6b; --bb-fg: #fff; --bb-muted: #cdb8f5; --bb-line: #5a3a95; --bb-accent: #ff9ecf; }
+  </style>
+</head>
+<body>
+  <h1>Beta Blast leaderboard widgets</h1>
+  <p>Add one script tag to any page. The widget draws where the tag is and keeps its own styles. <a href="./">Play the game</a>.</p>
+  <div class="grid">
+    <section>
+      <h2>Today's Daily Boulder</h2>
+      <pre>&lt;script src="embed.js" data-board="daily" async&gt;&lt;/script&gt;</pre>
+      <script src="embed.js" data-board="daily" async></script>
+    </section>
+    <section>
+      <h2>Survival, light theme, top 5, updating every minute</h2>
+      <pre>&lt;script src="embed.js" data-board="survival"
+  data-theme="light" data-limit="5" data-refresh="60" async&gt;&lt;/script&gt;</pre>
+      <script src="embed.js" data-board="survival" data-theme="light" data-limit="5" data-refresh="60" async></script>
+    </section>
+    <section class="themed">
+      <h2>Your own colours, and your own title</h2>
+      <pre>.themed { --bb-bg: #3b1d6b; --bb-fg: #fff; --bb-accent: #ff9ecf; }
+&lt;script src="embed.js" data-board="v3" data-title="Club boulder V3" async&gt;&lt;/script&gt;</pre>
+      <script src="embed.js" data-board="v3" data-title="Club boulder V3" data-limit="6" async></script>
+    </section>
+  </div>
+</body>
+</html>
