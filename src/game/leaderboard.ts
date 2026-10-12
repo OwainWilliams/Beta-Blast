@@ -1,6 +1,6 @@
 // Talks to the leaderboard API. Every call fails quietly (returns null), so the game plays on without it.
 import { API_URL } from '../config';
-import { dateKey, dailyLevel } from './levels';
+export { boardTitle, todaysBoard } from './boards';
 import type { Replay } from './replay';
 
 export interface Entry {
@@ -21,14 +21,6 @@ const TIMEOUT_MS = 6000;
 /** The board for a level, or null if it has none (custom routes and two-player matches). */
 export function boardFor(level: { id: string; custom?: boolean; versus?: boolean }): string | null {
   return level.custom || level.versus ? null : level.id;
-}
-
-export const todaysBoard = (): string => dailyLevel().id;
-/** "V3", "Survival", "Daily Boulder" for a board id. */
-export function boardTitle(board: string): string {
-  if (board === 'survival') return 'Survival';
-  if (board.startsWith('daily-')) return board === `daily-${dateKey()}` ? 'Daily Boulder' : `Daily ${board.slice(6)}`;
-  return board.toUpperCase();
 }
 
 /** Letters, numbers, spaces and . _ - only, at most 12 characters. Returns null if nothing usable is left. */

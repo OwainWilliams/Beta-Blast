@@ -2,6 +2,7 @@
 // A post carries the player's moves along with the score. Normally the Worker only checks the score is
 // believable for those moves (plausible() in src/game/replay.ts). With VERIFY_REPLAYS=1 it replays the moves
 // through the game's own engine and uses the score that comes out, so only a legal game can be posted.
+import { isBoard } from '../../src/game/boards';
 import { decodeLook } from '../../src/game/looks';
 import { parseReplay, Replay } from '../../src/game/replay';
 
@@ -9,12 +10,11 @@ export const MAX_NAME = 12;
 export const POSTS_PER_MINUTE = 10;
 export const BOARD_SIZE = 10;
 
-const BOARD = /^(v\d{1,3}|survival|daily-\d{4}-\d{2}-\d{2})$/;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9 _.\-]*$/;
 // Whole-word and substring checks on a squashed copy of the name ("f.u c k" still matches).
 const BLOCKED = ['fuck', 'shit', 'cunt', 'nigg', 'fagg', 'rape', 'nazi', 'bitch', 'whore', 'slut', 'dick', 'cock', 'twat', 'wank'];
 
-export const isBoard = (b: unknown): b is string => typeof b === 'string' && BOARD.test(b);
+export { isBoard };
 
 export function cleanName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;

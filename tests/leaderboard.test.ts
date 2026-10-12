@@ -1,11 +1,10 @@
-import { readFileSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker/src/index';
 import { allowedOrigin, cleanName as serverCleanName, parseSubmission, POSTS_PER_MINUTE } from '../worker/src/rules';
 import { gradeLevel, survivalLevel } from '../src/game/levels';
 import { plausible, playReplay, Replay, SCORE_BASE, SCORE_PER_SHOT } from '../src/game/replay';
 import { playBot } from './bot';
+import { fakeD1 } from './fakeD1';
 import { boardFor, boardTitle, cleanName, fetchTop, lastPlayedBoard, postScore, rememberBoard, todaysBoard } from '../src/game/leaderboard';
 
 /** A finished round on a grade, as a replay, with the score the engine gives it. */
@@ -66,23 +65,6 @@ describe('the rules', () => {
   });
 });
 
-/** D1's interface on top of node's SQLite, so the real SQL in the Worker runs against the real schema. */
-function fakeD1() {
-  const db = new DatabaseSync(':memory:');
-  db.exec(readFileSync('worker/schema.sql', 'utf8'));
-  const prepare = (sql: string) => {
-    let args: unknown[] = [];
-    const st = {
-      bind: (...a: unknown[]) => ((args = a), st),
-      first: async () => (db.prepare(sql).get(...(args as never[])) as never) ?? null,
-      all: async () => ({ results: db.prepare(sql).all(...(args as never[])) as never[] }),
-      run: async () => void db.prepare(sql).run(...(args as never[])),
-    };
-    return st;
-  };
-  return { prepare };
-}
-
 const ORIGIN = 'https://thesecretstage.vip';
 type Env = { DB: ReturnType<typeof fakeD1>; VERIFY_REPLAYS?: string };
 const call = (env: Env, method: string, path: string, body?: unknown, headers: Record<string, string> = { Origin: ORIGIN }) =>
@@ -97,7 +79,7 @@ describe('the Worker, replaying every post (VERIFY_REPLAYS=1)', () => {
   it('starts empty, works the score out itself, ranks it, and keeps each player’s best', async () => {
     const empty = await call(env, 'GET', '/scores?board=v3');
     expect(await empty.json()).toEqual({ board: 'v3', scores: [] });
-    expect(empty.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
+    expect(empty.headers.get('Access-Control-Allow-Origin')).toBe('*'); // reading is open to every site
 
     const low = round(3, 1);
     let high = round(3, 50);

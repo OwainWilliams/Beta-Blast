@@ -1,49 +1,70 @@
 // Beta Blast leaderboard API, on Cloudflare Workers with a D1 (SQLite) database.
-//   GET  /scores?board=v3   -> { board, scores: [{ name, score, seconds, look }] } the top 10 (look: climber outfit code, '' if unknown)
-//   POST /scores            -> { rank, best, score }                           body: { board, name, score, seconds?, look?, replay }
+//
+// Used by the game:
+//   GET  /scores?board=v3   -> { board, scores: [{ name, score, seconds, look }] } the top 10, always fresh
+//   POST /scores            -> { rank, best, score }   body: { board, name, score, seconds?, look?, replay }
 // The body holds the score and the player's moves. The Worker checks the score is believable for those moves
 // (or, with VERIFY_REPLAYS=1, replays them and uses its own score). One row per player name per board; a new
-// score only replaces the old one if it is higher.
+// score only replaces the old one if it is higher. Posting is only allowed from the game's own sites.
+//
+// Public and read-only, for anyone's website (any origin may call these; answers are cached for 30 seconds):
+//   GET  /v1                -> the list of endpoints
+//   GET  /v1/boards         -> every board that has scores
+//   GET  /v1/boards/{board} -> the top scores, with ranks and climber outfit colours ("daily" is today's Daily Boulder)
+//   GET  /v1/players/{name} -> a player's best score and rank on every board
 import { levelForBoard, plausible, playReplay } from '../../src/game/replay';
+import type { D1 } from './db';
 import { allowedOrigin, BOARD_SIZE, isBoard, parseSubmission, POSTS_PER_MINUTE } from './rules';
+import { boardView, ENDPOINTS, listBoards, playerView } from './v1';
 
-// Just the parts of the Cloudflare D1 types this file uses.
-interface D1Statement {
-  bind(...values: unknown[]): D1Statement;
-  first<T>(): Promise<T | null>;
-  all<T>(): Promise<{ results: T[] }>;
-  run(): Promise<unknown>;
-}
-interface D1 {
-  prepare(sql: string): D1Statement;
-}
 interface Env {
   DB: D1;
   ALLOWED_ORIGINS?: string;
   /** "1" replays every post through the game engine. It needs the Workers Paid plan: a run takes 8 to 50 ms of CPU. */
   VERIFY_REPLAYS?: string;
 }
+interface Ctx {
+  waitUntil(promise: Promise<unknown>): void;
+}
+interface EdgeCache {
+  match(request: Request): Promise<Response | undefined>;
+  put(request: Request, response: Response): Promise<void>;
+}
 
 const DEFAULT_ORIGINS = 'https://thesecretstage.vip,https://owainwilliams.github.io,http://localhost:5173,http://localhost:4173';
+const CACHE_SECONDS = 30;
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: Ctx): Promise<Response> {
     const origin = allowedOrigin(request.headers.get('Origin'), env.ALLOWED_ORIGINS ?? DEFAULT_ORIGINS);
-    const cors: Record<string, string> = origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } : {};
-    const reply = (body: unknown, status = 200) => Response.json(body, { status, headers: cors });
+    // Reading is open to every site. Posting, and the preflight for it, only to the game's own.
+    const post: Record<string, string> = origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } : {};
+    const read: Record<string, string> = { 'Access-Control-Allow-Origin': '*' };
+    const cors = request.method === 'GET' ? read : post;
+    const reply = (body: unknown, status = 200, extra: Record<string, string> = {}) => Response.json(body, { status, headers: { ...cors, ...extra } });
 
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+    if (request.method === 'OPTIONS') {
+      if (origin) return new Response(null, { status: 204, headers: post });
+      const readOnly = request.headers.get('Access-Control-Request-Method') === 'GET';
+      return new Response(null, { status: 204, headers: readOnly ? { ...read, 'Access-Control-Allow-Methods': 'GET, OPTIONS' } : {} });
+    }
     const url = new URL(request.url);
-    if (url.pathname !== '/scores') return reply({ error: 'Not found' }, 404);
-    // Browsers send an Origin on cross-site calls. Refuse posts from sites we don't know.
-    if (request.method === 'POST' && !origin) return reply({ error: 'Not allowed from here' }, 403);
+    const path = url.pathname.replace(/\/+$/, '') || '/';
 
     try {
       if (request.method === 'GET') {
-        const board = url.searchParams.get('board');
-        if (!isBoard(board)) return reply({ error: 'Unknown board' }, 400);
-        return reply({ board, scores: await top(env.DB, board) });
+        if (path === '/scores') {
+          const board = url.searchParams.get('board');
+          if (!isBoard(board)) return reply({ error: 'Unknown board' }, 400);
+          return reply({ board, scores: await top(env.DB, board) }, 200, { 'Cache-Control': 'no-cache' });
+        }
+        if (path === '/' || path === '/v1' || path.startsWith('/v1/')) return await cached(request, ctx, () => v1(path, url, env.DB, reply));
+        return reply({ error: 'Not found' }, 404);
       }
+      // Browsers send an Origin on cross-site calls. Refuse posts from sites we don't know.
+      if (path !== '/scores') return reply({ error: 'Not found' }, 404);
+      if (request.method === 'POST' && !origin) return reply({ error: 'Not allowed from here' }, 403);
+
       if (request.method === 'POST') {
         const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
         if (!(await withinLimit(env.DB, ip))) return reply({ error: 'Too many scores. Try again in a minute.' }, 429);
@@ -114,4 +135,36 @@ async function withinLimit(db: D1, ip: string): Promise<boolean> {
     .first<{ n: number }>();
   if (Math.random() < 0.02) await db.prepare('DELETE FROM hits WHERE minute < ?1').bind(minute - 5).run(); // tidy up now and then
   return (row?.n ?? 1) <= POSTS_PER_MINUTE;
+}
+
+type Reply = (body: unknown, status?: number, extra?: Record<string, string>) => Response;
+
+/** The public read endpoints. */
+async function v1(path: string, url: URL, db: D1, reply: Reply): Promise<Response> {
+  const fresh = { 'Cache-Control': `public, max-age=${CACHE_SECONDS}` };
+  if (path === '/' || path === '/v1') return reply({ name: 'Beta Blast leaderboard API', version: 1, endpoints: ENDPOINTS }, 200, fresh);
+  if (path === '/v1/boards') return reply(await listBoards(db), 200, fresh);
+  const board = /^\/v1\/boards\/([^/]+)$/.exec(path);
+  if (board) {
+    const limit = Number(url.searchParams.get('limit') ?? BOARD_SIZE);
+    const view = await boardView(db, decodeURIComponent(board[1]), Number.isFinite(limit) ? Math.floor(limit) : BOARD_SIZE);
+    return view ? reply(view, 200, fresh) : reply({ error: 'Unknown board' }, 404);
+  }
+  const player = /^\/v1\/players\/([^/]+)$/.exec(path);
+  if (player) {
+    const view = await playerView(db, decodeURIComponent(player[1]));
+    return view ? reply(view, 200, fresh) : reply({ error: 'No scores for that player' }, 404);
+  }
+  return reply({ error: 'Not found' }, 404);
+}
+
+/** Serve a GET from Cloudflare's edge cache when there, otherwise make it and keep it for next time. */
+async function cached(request: Request, ctx: Ctx | undefined, make: () => Promise<Response>): Promise<Response> {
+  const cache = (globalThis as { caches?: { default?: EdgeCache } }).caches?.default;
+  if (!cache) return make();
+  const hit = await cache.match(request);
+  if (hit) return hit;
+  const res = await make();
+  if (res.status === 200) ctx?.waitUntil(cache.put(request, res.clone()));
+  return res;
 }
