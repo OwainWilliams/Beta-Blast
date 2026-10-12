@@ -6,7 +6,7 @@ import { BOMB, Cell, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
 import { gradeLevel, LevelSpec, survivalLevel, versusLevel } from '../game/levels';
 import { changeGrade, pauseMusic, resumeMusic, setIntensity, startMusic, stopMusic, toggleMusic } from '../game/music';
 import { isMutedNow, sfx, toggleMute, unlockAudio } from '../game/audio';
-import { getBest, getBestTime, getMusic, getPlayerName, getShake, recordResult, recordTime, setShake } from '../game/storage';
+import { getBest, getBestTime, getLookCode, getMusic, getPlayerName, getShake, recordResult, recordTime, setShake } from '../game/storage';
 import { ChalkBag, chalkPuff } from '../chalkBag';
 import { chalkBurst, colourRing, confetti, floatText, popWord } from '../effects';
 import { Hints } from '../hints';
@@ -701,7 +701,7 @@ export class GameScene extends Phaser.Scene {
     return {
       name: getPlayerName(),
       ask: askName,
-      send: (name) => postScore(board, name, score, seconds, replay),
+      send: (name) => postScore(board, name, score, seconds, getLookCode(), replay),
       view: () => this.scene.start('Leaderboard', { board }),
     };
   }

@@ -3,7 +3,8 @@ import { WIDTH } from '../config';
 import { formatTime } from '../game/format';
 import { boardTitle, Entry, fetchTop, lastPlayedBoard, todaysBoard } from '../game/leaderboard';
 import { getPlayerName } from '../game/storage';
-import { askName, makeButton, txt } from '../ui';
+import { lookOrDefault } from '../game/looks';
+import { askName, makeButton, makeIcon, txt } from '../ui';
 
 const GRADES = 30; // how far the grade arrows go
 const BOARDS = [todaysBoard(), 'survival', ...Array.from({ length: GRADES }, (_, g) => `v${g}`)];
@@ -70,8 +71,9 @@ export class LeaderboardScene extends Phaser.Scene {
       const colour = mine ? '#ffd166' : n < 3 ? '#ffffff' : '#c9d1ee';
       const left = (x: number, s: string) => this.rows.push(txt(this, x, y, s, 18, colour, mine || n < 3).setOrigin(0, 0.5));
       if (mine) this.rows.push(this.add.rectangle(WIDTH / 2, y, WIDTH - 60, 34, 0xffd166, 0.12));
-      left(48, `${n + 1}`);
-      left(100, e.name);
+      left(44, `${n + 1}`);
+      this.rows.push(makeIcon(this, 94, y, 36, lookOrDefault(e.look)));
+      left(120, e.name);
       const right = txt(this, WIDTH - 48, y, board === 'survival' ? `${e.score}  ·  ${formatTime(e.seconds)}` : String(e.score), 18, colour, mine || n < 3).setOrigin(1, 0.5);
       this.rows.push(right);
     });

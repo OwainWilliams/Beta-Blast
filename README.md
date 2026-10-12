@@ -19,6 +19,10 @@ Built with TypeScript, [Phaser 3](https://phaser.io) and Vite. All art and sound
     <td align="center"><img src="docs/screenshots/lobby.png" width="240" alt="2 Player lobby with a keyword"><br><sub>2 Player lobby</sub></td>
     <td align="center"><img src="docs/screenshots/two-player.png" width="240" alt="A versus match with opponent panel"><br><sub>Versus match</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/customise.png" width="240" alt="Choosing the climber's beanie, shirt and chalk bag"><br><sub>Customise</sub></td>
+    <td align="center"><img src="docs/screenshots/leaderboard.png" width="240" alt="A leaderboard with each player's climber next to their score"><br><sub>Leaderboard</sub></td>
+  </tr>
 </table>
 
 Regenerate them with `npm i --no-save playwright && npx playwright install chromium`, then `node scripts/screenshots.mjs`.
@@ -84,6 +88,8 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 
 **Route Setter**: build your own route (10 rows, all hold types, pump limit, bombs and mega jugs on/off, row timer off/slow/normal/fast), test it, and share it as a link or code. Anyone opening `?route=CODE` plays it straight away, or use *Play a code* in the menu.
 
+**Customise**: pick your climber's beanie, shirt and chalk bag (*Customise* in the menu). Each colour is unlocked by playing: sending grades, sending Daily Boulders, lasting in Survival, or a big score. Locked ones show how to earn them. Your climber appears next to your name on the leaderboard.
+
 **Leaderboard**: after a grade, the Daily Boulder or a Survival run, pick a name (letters and numbers, up to 12) and post the score. Each grade, each day's Daily and Survival has its own top 10, under *Leaderboard* in the menu. Custom routes and two-player matches have no board. The game works fine if the API is down. Scores are checked by the API (see *Cheating* below).
 
 ## Balance
@@ -103,8 +109,9 @@ src/game/audio.ts    synthesised sound effects
 src/game/storage.ts  saved scores and settings
 src/net/             protocol, keywords, transports (WebRTC, same-browser, in-memory), match session
 src/game/leaderboard.ts  client for the leaderboard API
+src/game/looks.ts    the climber's outfits, what unlocks them, and the look code
 src/game/replay.ts   records a round's moves and plays them back, for checking scores
-src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby, Leaderboard
+src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby, Leaderboard, Customise
 worker/              the leaderboard API: a Cloudflare Worker with a D1 database
 src/overlays.ts      result, leave and pause screens
 src/effects.ts       chalk bursts, floating text, confetti
@@ -116,7 +123,7 @@ tests/               vitest (see below)
 
 The leaderboard is a small [Cloudflare Worker](https://developers.cloudflare.com/workers/) in `worker/` with a [D1](https://developers.cloudflare.com/d1/) (SQLite) database, both on the free plan. GitHub Pages only serves files, so this is the one moving part.
 
-- `GET /scores?board=v3` returns the top 10. `POST /scores` takes `{ board, name, score, seconds? }` and keeps each name's best score per board.
+- `GET /scores?board=v3` returns the top 10, each with the player's `look`. `POST /scores` takes `{ board, name, score, seconds?, look?, replay }` and keeps each name's best score per board. A player's look is stored once per name, so their climber is the same on every board.
 - It only accepts posts from the origins listed in `worker/src/index.ts`, limits each address to 10 posts a minute, and rejects rude names (`worker/src/rules.ts`).
 - `.github/workflows/deploy-worker.yml` creates the tables (`worker/schema.sql`) and deploys the Worker whenever `worker/` changes on `main`. It needs the repository secrets `CLOUDFLARE_API_TOKEN` (the *Edit Cloudflare Workers* template plus *Account, D1, Edit*) and `CLOUDFLARE_ACCOUNT_ID`.
 - The game finds the API through `API_URL` in `src/config.ts`. Set `VITE_API_URL` to use another one, or to an empty string to switch the leaderboard off.

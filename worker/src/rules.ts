@@ -2,6 +2,7 @@
 // A post carries the player's moves along with the score. Normally the Worker only checks the score is
 // believable for those moves (plausible() in src/game/replay.ts). With VERIFY_REPLAYS=1 it replays the moves
 // through the game's own engine and uses the score that comes out, so only a legal game can be posted.
+import { decodeLook } from '../../src/game/looks';
 import { parseReplay, Replay } from '../../src/game/replay';
 
 export const MAX_NAME = 12;
@@ -29,6 +30,7 @@ export interface Submission {
   replay: Replay;
   score: number; // what the game says it reached; the Worker checks it, or replaces it with its own replay's
   seconds: number; // survival only
+  look?: string; // the player's climber outfit, as a look code
 }
 
 /** Check a posted body. Returns the cleaned submission, or the reason it was refused. */
@@ -44,7 +46,8 @@ export function parseSubmission(body: unknown): Submission | string {
   const { score, seconds = 0 } = b;
   if (!Number.isInteger(score) || (score as number) < 1 || (score as number) > 1e9) return 'Score out of range';
   if (!Number.isInteger(seconds) || (seconds as number) < 0 || (seconds as number) > 86_400) return 'Time out of range';
-  return { board: b.board, name, replay, score: score as number, seconds: seconds as number };
+  if (b.look !== undefined && !decodeLook(b.look)) return 'Bad look';
+  return { board: b.board, name, replay, score: score as number, seconds: seconds as number, look: b.look as string | undefined };
 }
 
 export function allowedOrigin(origin: string | null, list: string): string | null {
