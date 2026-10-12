@@ -109,6 +109,9 @@ src/game/audio.ts    synthesised sound effects
 src/game/storage.ts  saved scores and settings
 src/net/             protocol, keywords, transports (WebRTC, same-browser, in-memory), match session
 src/game/leaderboard.ts  client for the leaderboard API
+src/game/boards.ts   board ids and names, shared with the Worker and the widget
+src/embed/           the embeddable leaderboard widget (built on its own to dist/embed.js)
+public/              files copied as they are, such as the widget demo page
 src/game/looks.ts    the climber's outfits, what unlocks them, and the look code
 src/game/replay.ts   records a round's moves and plays them back, for checking scores
 src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby, Leaderboard, Customise
@@ -123,10 +126,67 @@ tests/               vitest (see below)
 
 The leaderboard is a small [Cloudflare Worker](https://developers.cloudflare.com/workers/) in `worker/` with a [D1](https://developers.cloudflare.com/d1/) (SQLite) database, both on the free plan. GitHub Pages only serves files, so this is the one moving part.
 
-- `GET /scores?board=v3` returns the top 10, each with the player's `look`. `POST /scores` takes `{ board, name, score, seconds?, look?, replay }` and keeps each name's best score per board. A player's look is stored once per name, so their climber is the same on every board.
+- The game uses `GET /scores?board=v3` (the top 10, each with the player's `look`, never cached). `POST /scores` takes `{ board, name, score, seconds?, look?, replay }` and keeps each name's best score per board. A player's look is stored once per name, so their climber is the same on every board.
 - It only accepts posts from the origins listed in `worker/src/index.ts`, limits each address to 10 posts a minute, and rejects rude names (`worker/src/rules.ts`).
 - `.github/workflows/deploy-worker.yml` creates the tables (`worker/schema.sql`) and deploys the Worker whenever `worker/` changes on `main`. It needs the repository secrets `CLOUDFLARE_API_TOKEN` (the *Edit Cloudflare Workers* template plus *Account, D1, Edit*) and `CLOUDFLARE_ACCOUNT_ID`.
 - The game finds the API through `API_URL` in `src/config.ts`. Set `VITE_API_URL` to use another one, or to an empty string to switch the leaderboard off.
+
+### Public read API
+
+Anyone can read the leaderboard from any website or script. Replace the address below with the Worker's own (the default is in `src/apiUrl.ts`). Answers are JSON, open to every origin, and cached for 30 seconds. Posting scores stays limited to the game's own sites.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /v1` | The list of endpoints |
+| `GET /v1/boards` | Every board that has scores, with its title, entry count and top score |
+| `GET /v1/boards/{board}?limit=10` | The top scores on a board |
+| `GET /v1/players/{name}` | A player's best score and rank on every board |
+
+Boards are `v0`, `v1`, ... for grades, `survival`, and `daily-YYYY-MM-DD`. Use `daily` for the current Daily Boulder.
+
+```bash
+curl https://beta-blast-api.owaingdwilliams.workers.dev/v1/boards/daily?limit=3
+```
+
+```json
+{
+  "board": "daily-2026-10-12",
+  "title": "Daily Boulder",
+  "kind": "daily",
+  "scores": [
+    { "rank": 1, "name": "Ann", "score": 9100, "seconds": 0, "look": "742",
+      "outfit": { "beanie": "#f5c518", "shirt": "#a05cf0", "bag": "#e5484d" } }
+  ]
+}
+```
+
+`seconds` is the length of a Survival run (0 on other boards). `outfit` has the colours of the player's climber as CSS hex, so a page can draw it without knowing the palette. Names are public, the same as on the leaderboard in the game.
+
+### Embedding the leaderboard
+
+The widget is one script tag. It draws where the tag is, in its own shadow root so the page's styles can't break it (and it can't break the page).
+
+```html
+<script src="https://thesecretstage.vip/Beta-Blast/embed.js" data-board="daily" async></script>
+```
+
+![The leaderboard widget in three themes](docs/embed-widget.png)
+
+Set options as `data-` attributes on the tag:
+
+| Attribute | Default | |
+|---|---|---|
+| `data-board` | `daily` | `daily`, `survival`, `v3`, `daily-2026-10-12`... |
+| `data-limit` | `10` | Rows to show, 1 to 10 |
+| `data-title` | the board's name | The heading |
+| `data-theme` | `dark` | `dark`, `light`, or `auto` (follows the visitor's setting) |
+| `data-refresh` | off | Seconds between updates, at least 15 |
+| `data-target` | after the tag | A CSS selector for the element to draw into |
+| `data-link` | shown | `false` hides the "Play Beta Blast" link |
+| `data-game` | this game | Where the link goes |
+| `data-api` | this API | Use another API address |
+
+The colours can be set from the page's own CSS: `--bb-bg`, `--bb-fg`, `--bb-muted`, `--bb-line`, `--bb-accent` and `--bb-highlight`. `window.BetaBlast.mount(element, options)` draws a board from your own code. See `public/embed-demo.html` (served at `/embed-demo.html`) for working examples. The script is about 3 kB gzipped; `npm run build` makes it as `dist/embed.js`.
 
 ### Cheating
 
