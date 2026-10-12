@@ -72,6 +72,12 @@ describe('drawing a board', () => {
     expect(box.getAttribute('aria-label')).toBe('Beta Blast V3 leaderboard');
   });
 
+  it('puts a tick after the name of a signed-in player, and only theirs', () => {
+    const data = board({ scores: [{ rank: 1, name: 'Ann', score: 5, seconds: 0, outfit: OUTFIT, verified: true }, { rank: 2, name: 'Bob', score: 4, seconds: 0, outfit: OUTFIT, verified: false }, { rank: 3, name: 'Cat', score: 3, seconds: 0, outfit: OUTFIT }] });
+    const ticks = [...renderBoard(document, data, opts()).querySelectorAll('li')].map((li) => li.querySelector('.tick')?.textContent ?? null);
+    expect(ticks).toEqual(['✓', null, null]);
+  });
+
   it('uses the title it was given', () => {
     expect(renderBoard(document, board(), opts({ title: 'Our climbers' })).querySelector('h2')?.textContent).toBe('Our climbers');
   });

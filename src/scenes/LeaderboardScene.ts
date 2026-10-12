@@ -73,7 +73,9 @@ export class LeaderboardScene extends Phaser.Scene {
       if (mine) this.rows.push(this.add.rectangle(WIDTH / 2, y, WIDTH - 60, 34, 0xffd166, 0.12));
       left(44, `${n + 1}`);
       this.rows.push(makeIcon(this, 94, y, 36, lookOrDefault(e.look)));
-      left(120, e.name);
+      const name = txt(this, 120, y, e.name, 18, colour, mine || n < 3).setOrigin(0, 0.5);
+      this.rows.push(name);
+      if (e.verified) this.rows.push(txt(this, 120 + name.width + 7, y, '✓', 15, '#7ae6dc').setOrigin(0, 0.5)); // signed in: this name is theirs
       const right = txt(this, WIDTH - 48, y, board === 'survival' ? `${e.score}  ·  ${formatTime(e.seconds)}` : String(e.score), 18, colour, mine || n < 3).setOrigin(1, 0.5);
       this.rows.push(right);
     });

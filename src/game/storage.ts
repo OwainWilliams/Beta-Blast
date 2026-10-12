@@ -1,4 +1,5 @@
 import type { Progress } from './looks';
+import { cleanSave, CloudSave, mergeSaves } from './saveMerge';
 
 const KEY = 'beta-blast.v1';
 const OLD_KEY = 'crimp-and-pop.v1'; // the game's first name; saves are carried over from it
@@ -13,25 +14,31 @@ interface Save {
   hints: Record<string, boolean>;
   name: string; // leaderboard name
   look: string; // climber outfit, as a look code (see looks.ts)
+  lookChosen: boolean; // the player picked an outfit themselves, so it is worth keeping in their account
 }
 
 function load(): Save {
   try {
     const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
-    if (raw) return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, name: '', look: '000', ...JSON.parse(raw) };
+    if (raw) return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, name: '', look: '000', lookChosen: false, ...JSON.parse(raw) };
   } catch {
     /* storage unavailable */
   }
-  return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, name: '', look: '000' };
+  return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, name: '', look: '000', lookChosen: false };
 }
 
-function save(s: Save): void {
+const changeListeners: (() => void)[] = [];
+/** Run `cb` whenever the save changes (the account code uses this to copy it to the cloud). */
+export const onSaveChange = (cb: () => void): void => void changeListeners.push(cb);
+
+function save(s: Save, notify = true): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(s));
     localStorage.removeItem(OLD_KEY); // migrated
   } catch {
     /* storage unavailable */
   }
+  if (notify) changeListeners.forEach((cb) => cb());
 }
 
 export const getBest = (id: string): number => load().best[id] ?? 0;
@@ -73,14 +80,59 @@ export function recordTime(id: string, seconds: number): void {
   save(s);
 }
 
-export const getPlayerName = (): string => load().name;
+/** The leaderboard name: the account's if signed in, otherwise the one typed on this device. */
+export const getPlayerName = (): string => getAuth()?.name ?? load().name;
 export function setPlayerName(name: string): void {
-  save({ ...load(), name });
+  save({ ...load(), name }, false);
 }
 
 export const getLookCode = (): string => load().look;
 export function setLookCode(look: string): void {
-  save({ ...load(), look });
+  save({ ...load(), look, lookChosen: true });
+}
+
+// ---------- the account on this device ----------
+
+const AUTH_KEY = 'beta-blast.auth';
+export interface Auth {
+  token: string;
+  name: string | null; // the account's leaderboard name, once chosen
+  provider: 'github' | 'google';
+}
+
+export function getAuth(): Auth | null {
+  try {
+    const a = JSON.parse(localStorage.getItem(AUTH_KEY) ?? 'null') as Auth | null;
+    return a && typeof a.token === 'string' && (a.provider === 'github' || a.provider === 'google') ? a : null;
+  } catch {
+    return null;
+  }
+}
+export function setAuth(auth: Auth | null): void {
+  try {
+    if (auth) localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+    else localStorage.removeItem(AUTH_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+// ---------- the part of the save that follows an account ----------
+
+export function getCloudSave(): CloudSave {
+  const s = load();
+  return cleanSave({ best: s.best, bestTime: s.bestTime, sent: s.sent, hints: s.hints, look: s.lookChosen ? s.look : undefined });
+}
+
+/**
+ * Fold the account's copy into this device's save (higher scores, grades sent, seen tips from both).
+ * The account's outfit wins if it has one. Returns what the save now holds. Doesn't count as a change to sync.
+ */
+export function mergeCloudSave(remote: CloudSave): CloudSave {
+  const s = load();
+  const merged = mergeSaves(getCloudSave(), remote, 'b');
+  save({ ...s, best: merged.best, bestTime: merged.bestTime, sent: merged.sent, hints: merged.hints, look: merged.look ?? s.look, lookChosen: s.lookChosen || !!merged.look }, false);
+  return getCloudSave();
 }
 
 /** What the player has achieved so far, for unlocking climber outfits. */

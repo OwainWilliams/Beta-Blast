@@ -13,11 +13,14 @@
 //   GET  /v1/boards/{board} -> the top scores, with ranks and climber outfit colours ("daily" is today's Daily Boulder)
 //   GET  /v1/players/{name} -> a player's best score and rank on every board
 import { levelForBoard, plausible, playReplay } from '../../src/game/replay';
+import { accountRoute } from './account-routes';
+import { authenticate, AuthEnv, bearer } from './auth';
 import type { D1 } from './db';
+import { withinLimit } from './limits';
 import { allowedOrigin, BOARD_SIZE, isBoard, parseSubmission, POSTS_PER_MINUTE } from './rules';
 import { boardView, ENDPOINTS, listBoards, playerView } from './v1';
 
-interface Env {
+interface Env extends AuthEnv {
   DB: D1;
   ALLOWED_ORIGINS?: string;
   /** "1" replays every post through the game engine. It needs the Workers Paid plan: a run takes 8 to 50 ms of CPU. */
@@ -36,11 +39,17 @@ const CACHE_SECONDS = 30;
 
 export default {
   async fetch(request: Request, env: Env, ctx?: Ctx): Promise<Response> {
-    const origin = allowedOrigin(request.headers.get('Origin'), env.ALLOWED_ORIGINS ?? DEFAULT_ORIGINS);
-    // Reading is open to every site. Posting, and the preflight for it, only to the game's own.
-    const post: Record<string, string> = origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } : {};
+    const origins = env.ALLOWED_ORIGINS ?? DEFAULT_ORIGINS;
+    const origin = allowedOrigin(request.headers.get('Origin'), origins);
+    const url = new URL(request.url);
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    // Reading the leaderboard is open to every site. Posting, accounts and the preflight for them are only for the game's own.
+    const post: Record<string, string> = origin
+      ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' }
+      : {};
     const read: Record<string, string> = { 'Access-Control-Allow-Origin': '*' };
-    const cors = request.method === 'GET' ? read : post;
+    const private_ = path.startsWith('/me') || path === '/auth/exchange';
+    const cors = request.method === 'GET' && !private_ ? read : post;
     const reply = (body: unknown, status = 200, extra: Record<string, string> = {}) => Response.json(body, { status, headers: { ...cors, ...extra } });
 
     if (request.method === 'OPTIONS') {
@@ -48,10 +57,10 @@ export default {
       const readOnly = request.headers.get('Access-Control-Request-Method') === 'GET';
       return new Response(null, { status: 204, headers: readOnly ? { ...read, 'Access-Control-Allow-Methods': 'GET, OPTIONS' } : {} });
     }
-    const url = new URL(request.url);
-    const path = url.pathname.replace(/\/+$/, '') || '/';
 
     try {
+      const account = await accountRoute(request, url, path, env, origins, origin, reply);
+      if (account) return account;
       if (request.method === 'GET') {
         if (path === '/scores') {
           const board = url.searchParams.get('board');
@@ -67,15 +76,24 @@ export default {
 
       if (request.method === 'POST') {
         const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
-        if (!(await withinLimit(env.DB, ip))) return reply({ error: 'Too many scores. Try again in a minute.' }, 429);
+        if (!(await withinLimit(env.DB, ip, POSTS_PER_MINUTE))) return reply({ error: 'Too many scores. Try again in a minute.' }, 429);
         let body: unknown;
         try {
           body = await request.json();
         } catch {
           return reply({ error: 'Bad request' }, 400);
         }
+        // Signed in: the score goes under the account's own name. Anonymous: anything but a name an account has claimed.
+        const token = bearer(request);
+        const user = token ? await authenticate(env.DB, token) : null;
+        if (token && !user) return reply({ error: 'Your sign-in has expired. Sign in again.' }, 401);
+        if (user) {
+          if (!user.name) return reply({ error: 'Choose your leaderboard name first' }, 400);
+          if (typeof body === 'object' && body !== null) body = { ...body, name: user.name };
+        }
         const s = parseSubmission(body);
         if (typeof s === 'string') return reply({ error: s }, 400);
+        if (!user && (await env.DB.prepare('SELECT 1 AS x FROM users WHERE name = ?1').bind(s.name).first())) return reply({ error: 'That name belongs to a signed-in player. Pick another, or sign in.' }, 409);
         const level = levelForBoard(s.board, s.replay);
         if (!level) return reply({ error: 'That board is not open for scores' }, 400);
         let score = s.score;
@@ -117,24 +135,13 @@ export default {
 async function top(db: D1, board: string) {
   const { results } = await db
     .prepare(
-      `SELECT s.name AS name, s.score AS score, s.seconds AS seconds, COALESCE(p.look, '') AS look
-       FROM scores s LEFT JOIN players p ON p.name = s.name
+      `SELECT s.name AS name, s.score AS score, s.seconds AS seconds, COALESCE(p.look, '') AS look, u.id IS NOT NULL AS verified
+       FROM scores s LEFT JOIN players p ON p.name = s.name LEFT JOIN users u ON u.name = s.name
        WHERE s.board = ?1 ORDER BY s.score DESC, s.created_at ASC LIMIT ?2`,
     )
     .bind(board, BOARD_SIZE)
-    .all<{ name: string; score: number; seconds: number; look: string }>();
-  return results;
-}
-
-/** Count this post against the caller's address for the current minute. False if they are over the limit. */
-async function withinLimit(db: D1, ip: string): Promise<boolean> {
-  const minute = Math.floor(Date.now() / 60_000);
-  const row = await db
-    .prepare('INSERT INTO hits (ip, minute, n) VALUES (?1, ?2, 1) ON CONFLICT (ip, minute) DO UPDATE SET n = n + 1 RETURNING n')
-    .bind(ip, minute)
-    .first<{ n: number }>();
-  if (Math.random() < 0.02) await db.prepare('DELETE FROM hits WHERE minute < ?1').bind(minute - 5).run(); // tidy up now and then
-  return (row?.n ?? 1) <= POSTS_PER_MINUTE;
+    .all<{ name: string; score: number; seconds: number; look: string; verified: number }>();
+  return results.map((r) => ({ ...r, verified: !!r.verified }));
 }
 
 type Reply = (body: unknown, status?: number, extra?: Record<string, string>) => Response;

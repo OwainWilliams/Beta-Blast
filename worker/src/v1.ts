@@ -53,17 +53,17 @@ export async function boardView(db: D1, id: string, limit: number, now = Date.no
   if (!isBoard(board)) return null;
   const { results } = await db
     .prepare(
-      `SELECT s.name AS name, s.score AS score, s.seconds AS seconds, COALESCE(p.look, '') AS look
-       FROM scores s LEFT JOIN players p ON p.name = s.name
+      `SELECT s.name AS name, s.score AS score, s.seconds AS seconds, COALESCE(p.look, '') AS look, u.id IS NOT NULL AS verified
+       FROM scores s LEFT JOIN players p ON p.name = s.name LEFT JOIN users u ON u.name = s.name
        WHERE s.board = ?1 ORDER BY s.score DESC, s.created_at ASC LIMIT ?2`,
     )
     .bind(board, Math.min(BOARD_SIZE, Math.max(1, limit)))
-    .all<{ name: string; score: number; seconds: number; look: string }>();
+    .all<{ name: string; score: number; seconds: number; look: string; verified: number }>();
   return {
     board,
     title: boardTitle(board, utcDay(now)),
     kind: boardKind(board),
-    scores: results.map((r, i) => ({ rank: i + 1, name: r.name, score: r.score, seconds: r.seconds, look: r.look, outfit: outfitOf(r.look) })),
+    scores: results.map((r, i) => ({ rank: i + 1, name: r.name, score: r.score, seconds: r.seconds, look: r.look, outfit: outfitOf(r.look), verified: !!r.verified })),
   };
 }
 
@@ -80,11 +80,13 @@ export async function playerView(db: D1, rawName: string) {
     .all<{ board: string; score: number; seconds: number; rank: number }>();
   if (!results.length) return null;
   const who = await db.prepare('SELECT name, look FROM players WHERE name = ?1').bind(name).first<{ name: string; look: string }>();
+  const verified = !!(await db.prepare('SELECT 1 AS x FROM users WHERE name = ?1').bind(name).first());
   const look = who?.look ?? '';
   return {
     name: who?.name ?? name,
     look,
     outfit: outfitOf(look),
+    verified,
     bests: results.map((r) => ({ board: r.board, title: boardTitle(r.board), kind: boardKind(r.board), score: r.score, seconds: r.seconds, rank: r.rank })),
   };
 }

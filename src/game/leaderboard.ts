@@ -1,5 +1,7 @@
 // Talks to the leaderboard API. Every call fails quietly (returns null), so the game plays on without it.
 import { API_URL } from '../config';
+import { expireSession } from './account';
+import { getAuth } from './storage';
 export { boardTitle, todaysBoard } from './boards';
 import type { Replay } from './replay';
 
@@ -8,6 +10,7 @@ export interface Entry {
   score: number;
   seconds: number;
   look: string; // climber outfit code; '' if they haven't picked one
+  verified?: boolean; // the name belongs to a signed-in player
 }
 
 export const MAX_NAME = 12;
@@ -34,9 +37,11 @@ async function call<T>(path: string, init?: RequestInit): Promise<T | { error: s
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(`${API_URL}${path}`, { ...init, signal: ctl.signal });
+    const token = getAuth()?.token;
+    const res = await fetch(`${API_URL}${path}`, { ...init, headers: { ...init?.headers, ...(token && init?.method === 'POST' ? { Authorization: `Bearer ${token}` } : {}) }, signal: ctl.signal });
     const data = await res.json().catch(() => null);
     if (res.ok) return data as T;
+    if (res.status === 401 && token) expireSession();
     return { error: typeof data?.error === 'string' ? data.error : 'Leaderboard unavailable' };
   } catch {
     return null;

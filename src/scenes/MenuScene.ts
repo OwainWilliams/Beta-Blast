@@ -6,6 +6,8 @@ import { getBest, getBestTime, getMusic, getShake, isSent, setShake } from '../g
 import { isMutedNow, toggleMute, unlockAudio } from '../game/audio';
 import { toggleMusic } from '../game/music';
 import { formatTime } from '../game/format';
+import { onAccountChange, takeNotice } from '../game/account';
+import { getAuth } from '../game/storage';
 import { makeButton, makeToggle, txt } from '../ui';
 
 const PAGE = 8;
@@ -64,6 +66,16 @@ export class MenuScene extends Phaser.Scene {
       if (best > 0) txt(this, x, y + 34, `best ${best}`, 12, '#9aa6cf', false);
     }
 
+    const auth = getAuth();
+    makeButton(this, WIDTH / 2, 24, 116, 32, auth ? (auth.name ?? 'Account') : 'Sign in', () => this.scene.start('Account'), auth ? 0x2e8b57 : 0x59627f, 14);
+    // sign-in finishes after the menu is up: redraw when it does
+    const off = onAccountChange(() => this.scene.restart());
+    this.events.once('shutdown', off);
+    const notice = takeNotice();
+    if (notice) {
+      const n = txt(this, WIDTH / 2, 56, notice, 14, '#7ae6dc').setDepth(30);
+      this.tweens.add({ targets: n, alpha: 0, delay: 3200, duration: 600, onComplete: () => n.destroy() });
+    }
     makeButton(this, 70, 24, 116, 32, 'Customise', () => this.scene.start('Customise'), 0x59627f, 14);
     makeButton(this, WIDTH - 70, 24, 116, 32, 'Leaderboard', () => this.scene.start('Leaderboard'), 0x59627f, 14);
 
