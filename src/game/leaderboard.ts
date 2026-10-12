@@ -57,12 +57,12 @@ export async function fetchTop(board: string): Promise<Entry[] | null> {
   return data && 'scores' in data && Array.isArray(data.scores) ? data.scores : null;
 }
 
-/** Post a finished round. The server replays it to work out the score, so only the moves are sent. */
-export async function postScore(board: string, name: string, replay: Replay): Promise<{ ok: boolean; message: string }> {
+/** Post a finished round with the moves that made it, so the server can check the score is believable. */
+export async function postScore(board: string, name: string, score: number, seconds: number, replay: Replay): Promise<{ ok: boolean; message: string }> {
   const data = await call<{ rank: number; best: number; score: number }>('/scores', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ board, name, replay }),
+    body: JSON.stringify({ board, name, score, seconds: board === 'survival' ? Math.round(seconds) : 0, replay }),
   });
   if (!data) return { ok: false, message: "Couldn't reach the leaderboard" };
   if ('error' in data) return { ok: false, message: data.error };

@@ -690,11 +690,12 @@ export class GameScene extends Phaser.Scene {
     if (!board) return undefined;
     rememberBoard(board);
     if (this.engine.score <= 0) return undefined;
+    const { score, elapsed: seconds } = this.engine;
     const replay: Replay = { seed: this.level.survival ? this.level.seed : undefined, shots: this.recorder.shots, tail: this.recorder.tail };
     return {
       name: getPlayerName(),
       ask: askName,
-      send: (name) => postScore(board, name, replay),
+      send: (name) => postScore(board, name, score, seconds, replay),
       view: () => this.scene.start('Leaderboard', { board }),
     };
   }

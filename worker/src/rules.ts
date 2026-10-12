@@ -1,7 +1,7 @@
 // What the leaderboard accepts. Pure functions, so they are tested without a database.
-// A post carries the player's moves, not a score: the Worker replays them through the game's own engine
-// (src/game/replay.ts) and uses the score that comes out. Faking one means playing a legal game, which
-// leaves bots as the remaining way to cheat.
+// A post carries the player's moves along with the score. Normally the Worker only checks the score is
+// believable for those moves (plausible() in src/game/replay.ts). With VERIFY_REPLAYS=1 it replays the moves
+// through the game's own engine and uses the score that comes out, so only a legal game can be posted.
 import { parseReplay, Replay } from '../../src/game/replay';
 
 export const MAX_NAME = 12;
@@ -27,6 +27,8 @@ export interface Submission {
   board: string;
   name: string;
   replay: Replay;
+  score: number; // what the game says it reached; the Worker checks it, or replaces it with its own replay's
+  seconds: number; // survival only
 }
 
 /** Check a posted body. Returns the cleaned submission, or the reason it was refused. */
@@ -39,7 +41,10 @@ export function parseSubmission(body: unknown): Submission | string {
   if (!name) return 'That name is not allowed. Use 1 to 12 letters, numbers, spaces, . _ -';
   const replay = parseReplay(b.replay);
   if (typeof replay === 'string') return replay;
-  return { board: b.board, name, replay };
+  const { score, seconds = 0 } = b;
+  if (!Number.isInteger(score) || (score as number) < 1 || (score as number) > 1e9) return 'Score out of range';
+  if (!Number.isInteger(seconds) || (seconds as number) < 0 || (seconds as number) > 86_400) return 'Time out of range';
+  return { board: b.board, name, replay, score: score as number, seconds: seconds as number };
 }
 
 export function allowedOrigin(origin: string | null, list: string): string | null {

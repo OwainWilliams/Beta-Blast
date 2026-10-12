@@ -84,7 +84,7 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 
 **Route Setter**: build your own route (10 rows, all hold types, pump limit, bombs and mega jugs on/off, row timer off/slow/normal/fast), test it, and share it as a link or code. Anyone opening `?route=CODE` plays it straight away, or use *Play a code* in the menu.
 
-**Leaderboard**: after a grade, the Daily Boulder or a Survival run, pick a name (letters and numbers, up to 12) and post the score. Each grade, each day's Daily and Survival has its own top 10, under *Leaderboard* in the menu. Custom routes and two-player matches have no board. The game works fine if the API is down. Scores are sent from the browser, so the API only checks the numbers are sensible; it can't stop someone determined from faking one.
+**Leaderboard**: after a grade, the Daily Boulder or a Survival run, pick a name (letters and numbers, up to 12) and post the score. Each grade, each day's Daily and Survival has its own top 10, under *Leaderboard* in the menu. Custom routes and two-player matches have no board. The game works fine if the API is down. See *Cheating* below for what stops fake scores and what doesn't.
 
 ## Balance
 
@@ -103,6 +103,7 @@ src/game/audio.ts    synthesised sound effects
 src/game/storage.ts  saved scores and settings
 src/net/             protocol, keywords, transports (WebRTC, same-browser, in-memory), match session
 src/game/leaderboard.ts  client for the leaderboard API
+src/game/replay.ts   records a round's moves, plays them back, and checks scores are believable
 src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby, Leaderboard
 worker/              the leaderboard API: a Cloudflare Worker with a D1 database
 src/overlays.ts      result, leave and pause screens
@@ -116,9 +117,17 @@ tests/               vitest (see below)
 The leaderboard is a small [Cloudflare Worker](https://developers.cloudflare.com/workers/) in `worker/` with a [D1](https://developers.cloudflare.com/d1/) (SQLite) database, both on the free plan. GitHub Pages only serves files, so this is the one moving part.
 
 - `GET /scores?board=v3` returns the top 10. `POST /scores` takes `{ board, name, score, seconds? }` and keeps each name's best score per board.
-- It only accepts posts from the origins listed in `worker/src/index.ts`, limits each address to 10 posts a minute, and rejects out-of-range scores and rude names (`worker/src/rules.ts`).
+- It only accepts posts from the origins listed in `worker/src/index.ts`, limits each address to 10 posts a minute, and rejects rude names (`worker/src/rules.ts`).
 - `.github/workflows/deploy-worker.yml` creates the tables (`worker/schema.sql`) and deploys the Worker whenever `worker/` changes on `main`. It needs the repository secrets `CLOUDFLARE_API_TOKEN` (the *Edit Cloudflare Workers* template plus *Account, D1, Edit*) and `CLOUDFLARE_ACCOUNT_ID`.
 - The game finds the API through `API_URL` in `src/config.ts`. Set `VITE_API_URL` to use another one, or to an empty string to switch the leaderboard off.
+
+### Cheating
+
+The game runs in the player's browser, so a score can't simply be trusted. Two layers deal with that:
+
+- **Every post carries a replay.** The engine runs in fixed time steps, and the game records each shot (how long the player aimed, whether they swapped holds, the aim). `src/game/replay.ts` can play that back through the same engine and gets the same score and time to the digit. This was checked against the real game in a browser.
+- **By default the Worker checks the score is believable for the replay** (`plausible()`): no more than 800 points per shot plus 8,000 for a big drop (the best greedy bot averages about 315 per shot), a survival time that fits the moves, a Daily board for about today, and a seed for survival. That stops tampered requests and made-up numbers, but not someone who writes a replay by hand and keeps the score under those limits.
+- **Full verification is a switch.** With `VERIFY_REPLAYS = "1"` in `worker/wrangler.toml` the Worker replays every post and ignores the claimed score, so only a legal game can be posted (a bot could still play one). A replay costs 8 to 50 ms of CPU, and the Workers *Free* plan allows about 10 ms, so this needs the *Paid* plan ($5 a month). Nothing else needs to change.
 
 ## Tests and checks
 
@@ -132,7 +141,7 @@ The rules are pure TypeScript with no Phaser in them, so most of the game is tes
 
 - **Unit tests** for the grid, engine, levels, route codes, saves, music patterns and the network layer. The PeerJS transport is tested against an in-memory stand-in for PeerJS.
 - **Fuzz tests** (`tests/fuzz.test.ts`) play hundreds of random games across every mode and check, after every shot, that the wall is consistent, nothing hangs in mid-air, nothing is removed twice and the score never goes down. They also throw 20,000 junk messages at the network parser. They count which cases they reached, and fail if any (bombs, mega jugs, slick holds, clean sweeps, incoming rows) never came up.
-- The leaderboard tests run the Worker's real SQL against SQLite (Node's built-in `node:sqlite`), using the real `schema.sql`.
+- The leaderboard tests run the Worker's real SQL against SQLite (Node's built-in `node:sqlite`), using the real `schema.sql`. The replay tests have a bot play real rounds and check each one plays back to the same score, and that edited or cut-short replays are refused.
 - **CI** runs the type check, the tests and the build on every pull request.
 
 ## Ideas for later

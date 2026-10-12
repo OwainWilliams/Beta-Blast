@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Engine } from '../src/game/engine';
 import { dailyLevel, dateKey, gradeLevel, survivalLevel } from '../src/game/levels';
-import { levelForBoard, MAX_AIM_MILLI, MAX_SHOTS, parseReplay, playReplay, Recorder, Replay, STEP, toMilli } from '../src/game/replay';
+import { levelForBoard, plausible, SCORE_BASE, SCORE_PER_SHOT, MAX_AIM_MILLI, MAX_SHOTS, parseReplay, playReplay, Recorder, Replay, STEP, toMilli } from '../src/game/replay';
 import { playBot } from './bot';
 
 describe('replays play back exactly', () => {
@@ -73,6 +73,27 @@ describe('replays that were tampered with are refused or change the score', () =
   it('refuses runs that are too long', () => {
     expect(playReplay(level, { shots: [[600_001, 0, 0]], tail: 0 })).toMatchObject({ ok: false, reason: 'Run too long' });
     expect(playReplay(level, { shots: [], tail: 600_001 })).toMatchObject({ ok: false, reason: 'Run too long' });
+  });
+});
+
+describe('plausible scores', () => {
+  const shots = (n: number, wait = 120): Replay => ({ shots: Array.from({ length: n }, () => [wait, 0, 0] as Replay['shots'][number]), tail: 0 });
+
+  it('allows up to the ceiling for the number of shots, and no more', () => {
+    const r = shots(10);
+    expect(plausible('v3', r, SCORE_BASE + SCORE_PER_SHOT * 10, 0)).toBeNull();
+    expect(plausible('v3', r, SCORE_BASE + SCORE_PER_SHOT * 10 + 1, 0)).toMatch(/too high/);
+    expect(plausible('v3', r, 0, 0)).toMatch(/No score/);
+    expect(plausible('v3', r, 12.5, 0)).toMatch(/No score/);
+    expect(plausible('v3', r, 100, 30)).toMatch(/Only survival/);
+  });
+
+  it('fits a survival time to the moves: 10 shots waiting 1 s each took at least 10 s, and not hours', () => {
+    const r = shots(10);
+    expect(plausible('survival', r, 100, 14)).toBeNull();
+    expect(plausible('survival', r, 100, 5)).toMatch(/does not match/);
+    expect(plausible('survival', r, 100, 5000)).toMatch(/does not match/);
+    expect(plausible('survival', r, 100, 0)).toMatch(/Bad time/);
   });
 });
 

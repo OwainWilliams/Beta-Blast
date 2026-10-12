@@ -6,3 +6,8 @@ compatibility_date = "2025-09-01"
 binding = "DB"
 database_name = "beta-blast-scores"
 database_id = "98e9912b-4730-4eaf-b269-1f970aad67d0"
+
+[vars]
+# "1" replays every post through the game engine to work out the score itself. A run takes 8 to 50 ms of
+# CPU, so that needs the Workers Paid plan (the free plan allows about 10 ms). "0" only checks the score is believable.
+VERIFY_REPLAYS = "0"

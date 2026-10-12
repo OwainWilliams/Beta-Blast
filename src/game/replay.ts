@@ -117,6 +117,28 @@ export function playReplay(level: LevelSpec, replay: Replay): Outcome {
   return { ok: true, won, score: e.score, seconds: e.elapsed };
 }
 
+// Cheap limits for when the Worker can't afford to replay a run (see worker/src/index.ts). They are set well
+// beyond what real play reaches: the best greedy bot averages about 315 points a shot, and no shot flies
+// longer than about 260 steps. They stop crude fakes, not a careful forgery.
+export const SCORE_BASE = 8000; // room for one huge drop
+export const SCORE_PER_SHOT = 800;
+export const FLIGHT_MIN_STEPS = 3;
+export const FLIGHT_MAX_STEPS = 600;
+
+/** Is a claimed score (and survival time) believable for a replay of this length? Null if so, else why not. */
+export function plausible(board: string, replay: Replay, score: number, seconds: number): string | null {
+  const shots = replay.shots.length;
+  if (!Number.isInteger(score) || score < 1) return 'No score to post';
+  if (score > SCORE_BASE + SCORE_PER_SHOT * shots) return 'That score is too high for the moves played';
+  if (board !== 'survival') return seconds === 0 ? null : 'Only survival has a time';
+  if (!Number.isInteger(seconds) || seconds < 1) return 'Bad time';
+  const aiming = replay.tail + replay.shots.reduce((sum, s) => sum + s[0], 0);
+  const steps = seconds * 120;
+  const slack = 60; // the time is rounded to a second
+  if (steps < aiming + FLIGHT_MIN_STEPS * shots - slack || steps > aiming + FLIGHT_MAX_STEPS * shots + slack) return 'That time does not match the moves played';
+  return null;
+}
+
 const BOARD = /^(?:v(\d{1,3})|survival|daily-(\d{4})-(\d{2})-(\d{2}))$/;
 
 /** The level a leaderboard board is played on, or null if the board or the replay's seed makes no sense. */
