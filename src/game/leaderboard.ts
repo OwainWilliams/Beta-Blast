@@ -1,6 +1,7 @@
 // Talks to the leaderboard API. Every call fails quietly (returns null), so the game plays on without it.
 import { API_URL } from '../config';
 import { dateKey, dailyLevel } from './levels';
+import type { Replay } from './replay';
 
 export interface Entry {
   name: string;
@@ -56,14 +57,14 @@ export async function fetchTop(board: string): Promise<Entry[] | null> {
   return data && 'scores' in data && Array.isArray(data.scores) ? data.scores : null;
 }
 
-/** Post a score. Resolves to a message for the player; the rank is included when the score went in. */
-export async function postScore(board: string, name: string, score: number, seconds = 0): Promise<{ ok: boolean; message: string }> {
-  const data = await call<{ rank: number; best: number }>('/scores', {
+/** Post a finished round. The server replays it to work out the score, so only the moves are sent. */
+export async function postScore(board: string, name: string, replay: Replay): Promise<{ ok: boolean; message: string }> {
+  const data = await call<{ rank: number; best: number; score: number }>('/scores', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ board, name, score, seconds: board === 'survival' ? Math.round(seconds) : 0 }),
+    body: JSON.stringify({ board, name, replay }),
   });
   if (!data) return { ok: false, message: "Couldn't reach the leaderboard" };
   if ('error' in data) return { ok: false, message: data.error };
-  return { ok: true, message: score >= data.best ? `Leaderboard rank #${data.rank}` : `Your best here is ${data.best} (rank #${data.rank})` };
+  return { ok: true, message: data.score >= data.best ? `Leaderboard rank #${data.rank}` : `Your best here is ${data.best} (rank #${data.rank})` };
 }

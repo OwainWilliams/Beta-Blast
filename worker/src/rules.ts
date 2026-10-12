@@ -1,11 +1,10 @@
 // What the leaderboard accepts. Pure functions, so they are tested without a database.
-// Scores are sent from the player's browser, so none of this can stop a determined cheater; it keeps out
-// junk, silly numbers and rude names.
+// A post carries the player's moves, not a score: the Worker replays them through the game's own engine
+// (src/game/replay.ts) and uses the score that comes out. Faking one means playing a legal game, which
+// leaves bots as the remaining way to cheat.
+import { parseReplay, Replay } from '../../src/game/replay';
 
 export const MAX_NAME = 12;
-export const MAX_SCORE = 500_000;
-export const MAX_SURVIVAL_SCORE = 2_000_000;
-export const MAX_SECONDS = 6 * 60 * 60;
 export const POSTS_PER_MINUTE = 10;
 export const BOARD_SIZE = 10;
 
@@ -27,23 +26,20 @@ export function cleanName(raw: unknown): string | null {
 export interface Submission {
   board: string;
   name: string;
-  score: number;
-  seconds: number;
+  replay: Replay;
 }
 
 /** Check a posted body. Returns the cleaned submission, or the reason it was refused. */
 export function parseSubmission(body: unknown): Submission | string {
   if (typeof body !== 'object' || body === null) return 'Bad request';
   const b = body as Record<string, unknown>;
+  if ('score' in b && !('replay' in b)) return 'This version of the game is out of date. Reload the page and play again.';
   if (!isBoard(b.board)) return 'Unknown board';
   const name = cleanName(b.name);
   if (!name) return 'That name is not allowed. Use 1 to 12 letters, numbers, spaces, . _ -';
-  const max = b.board === 'survival' ? MAX_SURVIVAL_SCORE : MAX_SCORE;
-  if (!Number.isInteger(b.score) || (b.score as number) < 1 || (b.score as number) > max) return 'Score out of range';
-  const seconds = b.seconds ?? 0;
-  if (!Number.isInteger(seconds) || (seconds as number) < 0 || (seconds as number) > MAX_SECONDS) return 'Time out of range';
-  if (b.board !== 'survival' && seconds !== 0) return 'Only survival has a time';
-  return { board: b.board, name, score: b.score as number, seconds: seconds as number };
+  const replay = parseReplay(b.replay);
+  if (typeof replay === 'string') return replay;
+  return { board: b.board, name, replay };
 }
 
 export function allowedOrigin(origin: string | null, list: string): string | null {
