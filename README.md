@@ -4,6 +4,25 @@ A bouldering-themed bubble shooter. Fire holds at the wall, match three or more 
 
 Built with TypeScript, [Phaser 3](https://phaser.io) and Vite. All art and sound is generated in code, so there are no asset files.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/menu.png" width="240" alt="Main menu"><br><sub>Menu</sub></td>
+    <td align="center"><img src="docs/screenshots/gameplay.png" width="240" alt="Aiming a shot at a V8 wall"><br><sub>Aim and shoot</sub></td>
+    <td align="center"><img src="docs/screenshots/mega-jug.png" width="240" alt="A rainbow mega jug loaded in the chalk bag"><br><sub>Mega jug wildcard</sub></td>
+    <td align="center"><img src="docs/screenshots/sent.png" width="240" alt="Route sent celebration with confetti"><br><sub>Flash!</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/survival.png" width="240" alt="Survival mode stage banner"><br><sub>Survival stages</sub></td>
+    <td align="center"><img src="docs/screenshots/route-setter.png" width="240" alt="Route Setter editor"><br><sub>Route Setter</sub></td>
+    <td align="center"><img src="docs/screenshots/lobby.png" width="240" alt="2 Player lobby with a keyword"><br><sub>2 Player lobby</sub></td>
+    <td align="center"><img src="docs/screenshots/two-player.png" width="240" alt="A versus match with opponent panel"><br><sub>Versus match</sub></td>
+  </tr>
+</table>
+
+Regenerate them with `npm i --no-save playwright && npx playwright install chromium`, then `node scripts/screenshots.mjs`.
+
 ## Run it
 
 ```bash
