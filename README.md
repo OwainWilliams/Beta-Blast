@@ -1,4 +1,4 @@
-# Crimp & Pop
+# Beta Blast
 
 A bouldering-themed bubble shooter. Fire holds at the wall, match three or more of the same hold to pop them, and cut off the rest so they fall. Clear the whole wall to **send** the route.
 

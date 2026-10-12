@@ -109,7 +109,7 @@ class LocalTransport implements Transport {
   }
 }
 
-const channelName = (code: string) => `crimp-and-pop-local-${code}`;
+const channelName = (code: string) => `beta-blast-local-${code}`;
 
 function hostLocal(): HostHandle {
   const code = newCode();

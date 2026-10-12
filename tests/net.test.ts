@@ -86,7 +86,7 @@ describe('keywords', () => {
   });
 
   it('namespaces the broker id', () => {
-    expect(peerIdFor('CHALK-DYNO-58')).toBe('crimp-and-pop-chalk-dyno-58');
+    expect(peerIdFor('CHALK-DYNO-58')).toBe('beta-blast-chalk-dyno-58');
   });
 });
 

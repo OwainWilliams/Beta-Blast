@@ -21,7 +21,7 @@ export class MenuScene extends Phaser.Scene {
       const h = this.add.image(90 + i * 90, 70, `hold-${i}`).setScale(1.2);
       this.tweens.add({ targets: h, y: 80, duration: 900 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     }
-    txt(this, WIDTH / 2, 150, 'CRIMP & POP', 54, '#ffd166');
+    txt(this, WIDTH / 2, 150, 'BETA BLAST', 58, '#ffd166');
     txt(this, WIDTH / 2, 198, 'Shoot the holds. Send the route.', 18, '#c9d1ee', false);
 
     const daily = dailyLevel();

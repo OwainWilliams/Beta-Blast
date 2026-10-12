@@ -107,7 +107,7 @@ export class ChalkBag {
     // drawstring and toggle
     g.lineStyle(2.5, 0xf4f4f0, 0.95).beginPath().moveTo(-31, 3).lineTo(-39, 15).lineTo(-37, 26).strokePath();
     g.fillStyle(0x20242f).fillCircle(-37, 28, 3.5);
-    const logo = txt(this.scene, 2, 27, 'C&P', 10, '#9c4116');
+    const logo = txt(this.scene, 2, 27, 'BB', 12, '#9c4116');
     return [g, logo];
   }
 

@@ -23,7 +23,7 @@ export function codeFromInput(input: string): string | null {
 }
 
 /** The id the host registers with the matchmaking broker. Namespaced so it can't clash with other apps. */
-export const peerIdFor = (code: string): string => `crimp-and-pop-${code.toLowerCase()}`;
+export const peerIdFor = (code: string): string => `beta-blast-${code.toLowerCase()}`;
 
 export function linkFor(code: string, base = `${window.location.origin}${window.location.pathname}`): string {
   return `${base}?join=${encodeURIComponent(code)}`;

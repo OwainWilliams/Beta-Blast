@@ -1,4 +1,5 @@
-const KEY = 'crimp-and-pop.v1';
+const KEY = 'beta-blast.v1';
+const OLD_KEY = 'crimp-and-pop.v1'; // the game's first name; saves are carried over from it
 
 interface Save {
   best: Record<string, number>;
@@ -12,7 +13,7 @@ interface Save {
 
 function load(): Save {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
     if (raw) return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, ...JSON.parse(raw) };
   } catch {
     /* storage unavailable */
@@ -23,6 +24,7 @@ function load(): Save {
 function save(s: Save): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(s));
+    localStorage.removeItem(OLD_KEY); // migrated
   } catch {
     /* storage unavailable */
   }
