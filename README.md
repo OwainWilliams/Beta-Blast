@@ -84,7 +84,7 @@ Good to know:
 
 You send a route when every coloured hold is gone. Any obstacles left tumble off.
 
-**Scoring**: pops, drops (cut-off holds), bank shots (bonus per wall bounce), a route bonus per grade, and **FLASH** (+500) for sending without being pumped.
+**Scoring**: pops, drops (cut-off holds), bank shots (bonus per wall bounce), a route bonus per grade, and **FLASH** (+500) for sending without being pumped. Sending faster pays a **speed bonus**: every second under a par time is worth points (12 a second on V0, more on harder grades), and a live counter above the bottom bar shows what a send is worth right now. Time spent paused, or watching the animations, doesn't count.
 
 **Modes**: endless grades (V0, V1, V2... with no top, shown 12 to a page), and a **Daily Boulder** that is the same seeded route for everyone each day. Best scores and sends are saved in local storage.
 

@@ -65,6 +65,7 @@ export class GameScene extends Phaser.Scene {
   private trackClimber: Climber | null = null;
   private stageText: Phaser.GameObjects.Text | null = null;
   private clockText: Phaser.GameObjects.Text | null = null;
+  private speedText: Phaser.GameObjects.Text | null = null;
   private lastClock = -1;
   private stageBanner: Phaser.GameObjects.Text[] = [];
   private baseClimber: Climber | null = null;
@@ -166,12 +167,15 @@ export class GameScene extends Phaser.Scene {
   private buildHud(): void {
     this.stageText = null;
     this.clockText = null;
+    this.speedText = null;
     if (this.level.survival) this.stageText = txt(this, GRID_X + 48, 575, 'STAGE 1', 20, '#ffd166');
     else txt(this, GRID_X + 40, 575, this.level.custom ? 'Custom' : this.level.label, 22, '#ffd166');
     this.scoreText = txt(this, LAUNCH_X, 575, 'Score 0', 20);
     if (this.level.survival) this.clockText = txt(this, WIDTH - GRID_X - 50, 575, '0:00', 20, '#c9d1ee');
     else if (this.level.versus) this.incomingText = txt(this, WIDTH - GRID_X - 66, 575, '', 14, '#9aa6cf');
     else txt(this, WIDTH - GRID_X - 60, 575, `Best ${getBest(this.level.id)}`, 16, '#c9d1ee', false);
+    // what a send would earn for speed right now: it counts down, so going faster is worth more
+    if (!this.level.survival && !this.level.versus) this.speedText = txt(this, LAUNCH_X, 593, '', 12, '#7ae6dc', false);
     this.comboText = txt(this, LAUNCH_X, 548, '', 20, '#ff9f43').setDepth(5).setVisible(false);
     this.muteText = txt(this, WIDTH - 24, 700, isMutedNow() ? '🔇' : '🔊', 18).setInteractive({ useHandCursor: true });
     this.muteText.on('pointerup', () => this.toggleSound());
@@ -379,11 +383,12 @@ export class GameScene extends Phaser.Scene {
       this.endGame(false);
       return;
     }
-    if (this.clockText) {
+    if (this.clockText || this.speedText) {
       const sec = Math.floor(this.engine.elapsed);
       if (sec !== this.lastClock) {
         this.lastClock = sec;
-        this.clockText.setText(`${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`);
+        this.clockText?.setText(`${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`);
+        this.speedText?.setText(`Speed bonus +${this.engine.speedBonusNow()}`);
       }
     }
     const frac = this.engine.timerFraction();
@@ -619,11 +624,12 @@ export class GameScene extends Phaser.Scene {
     this.hints.clear();
     let bonus = 0;
     let flash = false;
+    let speed = 0;
     const previousBest = getBest(this.level.id);
     const previousTime = getBestTime(this.level.id);
     if (won) {
       this.removeHolds(res?.leftover ?? [], 'fall');
-      if (!this.level.versus) ({ bonus, flash } = this.engine.finishWin());
+      if (!this.level.versus) ({ bonus, flash, speed } = this.engine.finishWin());
       this.scoreText.setText(`Score ${this.engine.score}`);
       if (this.trackClimber) {
         this.tweens.add({ targets: this.trackClimber, y: TRACK_TOP, duration: 500 });
@@ -652,7 +658,7 @@ export class GameScene extends Phaser.Scene {
     recordResult(this.level.id, this.engine.score, won);
     if (this.level.survival) recordTime(this.level.id, this.engine.elapsed);
     const records = { score: this.engine.score > previousBest, time: Math.round(this.engine.elapsed) > previousTime };
-    this.time.delayedCall(won ? 2000 : 900, () => this.showResult(won, bonus, flash, records));
+    this.time.delayedCall(won ? 2000 : 900, () => this.showResult(won, bonus, flash, speed, records));
   }
 
   /** Big "SENT!" with a flash and a shower of chalk and tape. */
@@ -671,7 +677,7 @@ export class GameScene extends Phaser.Scene {
     this.scene.restart(this.level.survival ? { level: survivalLevel() } : this.data0);
   }
 
-  private showResult(won: boolean, bonus: number, flash: boolean, records: { score: boolean; time: boolean }): void {
+  private showResult(won: boolean, bonus: number, flash: boolean, speed: number, records: { score: boolean; time: boolean }): void {
     const e = this.engine;
     const id = this.level.id;
     showRoundResult(this, {
@@ -681,6 +687,8 @@ export class GameScene extends Phaser.Scene {
       bestScore: getBest(id),
       bestCombo: e.bestCombo,
       bonus,
+      speed,
+      seconds: e.elapsed,
       flash,
       survival: this.level.survival ? { seconds: e.elapsed, stage: e.stage(), bestSeconds: getBestTime(id), newBestScore: records.score, newBestTime: records.time } : undefined,
       post: this.leaderboardPost(),

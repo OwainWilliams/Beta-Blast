@@ -125,3 +125,15 @@ export function versusLevel(seed: number): LevelSpec {
     shared: true,
   };
 }
+
+// Speed bonus, for sending a route. The row timer keeps adding holds, so a slow game has more to pop and used to
+// score more than a fast one: each extra second was worth roughly 8 to 16 points of popping. The bonus pays that
+// back and more: every second under a par time is worth a set number of points. (On bot play the faster of two
+// clears now scores higher 66 to 87% of the time, up from about half; layout and big drops still add variety.)
+// Both the rate and the par time grow with the grade, as harder walls are bigger and take longer.
+export const speedPointsPerSecond = (grade: number): number => 12 + 2 * Math.min(grade, 12);
+export const speedBonusSeconds = (grade: number): number => 120 + 20 * Math.min(grade, 12);
+/** The most a send can earn for speed (a send in no time at all). */
+export const speedBonusMax = (grade: number): number => Math.round(speedPointsPerSecond(grade) * speedBonusSeconds(grade));
+/** Points for sending a grade's route in `seconds` of aiming and flying (time spent paused or watching doesn't count). */
+export const speedBonus = (grade: number, seconds: number): number => Math.round(speedPointsPerSecond(grade) * Math.max(0, speedBonusSeconds(grade) - seconds));

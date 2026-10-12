@@ -118,7 +118,7 @@ export function playReplay(level: LevelSpec, replay: Replay): Outcome {
 
 // Cheap limits for when the Worker can't afford to replay a run (see worker/src/index.ts). They are set well
 // beyond what real play reaches, so an honest player never meets them.
-export const SCORE_BASE = 8000; // room for one huge drop
+export const SCORE_BASE = 18000; // room for the biggest speed bonus (see levels.ts) and one huge drop
 export const SCORE_PER_SHOT = 800;
 export const FLIGHT_MIN_STEPS = 3;
 export const FLIGHT_MAX_STEPS = 600;

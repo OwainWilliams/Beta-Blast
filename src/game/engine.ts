@@ -2,7 +2,7 @@
 // animates what comes back, and the balance bot plays it headlessly.
 import { BOMB, Cell, COLS, D, Grid, Hold, isColour, isObstacle, LOSE_ROW, makeHold, R, SLICK, VOLUME, WILD } from './grid';
 import { attackFor, VERSUS_RULES } from './versus';
-import { LevelSpec, mulberry32, survivalColours, survivalInterval, survivalSlickRate, survivalStage, survivalVolumeRate } from './levels';
+import { LevelSpec, mulberry32, speedBonus, survivalColours, survivalInterval, survivalSlickRate, survivalStage, survivalVolumeRate } from './levels';
 
 export const SPEED = 950; // px/s
 export const MAX_AIM = 1.35; // radians from vertical
@@ -56,6 +56,7 @@ const WILD_CHANCE = 1 / 18;
 export const SWEEP_BONUS = 500;
 export const SWEEP_ROWS = 3;
 export const STAGE_BONUS = 250;
+const FULL_WALL = 60; // holds in a wall big enough to earn the whole speed bonus (a custom route)
 
 const key = (c: Cell) => `${c[0]},${c[1]}`;
 
@@ -468,10 +469,10 @@ export class Engine {
    * Returns what happened, or null if nothing did.
    */
   tick(dt: number): TickResult | null {
+    if (!this.level.survival && !this.grid.hasColour()) return null;
+    this.elapsed += dt; // counts on every level, so the speed bonus works even where rows don't drop
     const interval = this.currentInterval();
     if (interval <= 0) return null;
-    if (!this.level.survival && !this.grid.hasColour()) return null;
-    this.elapsed += dt;
     this.dropClock += dt;
     let newRow: Hold[] | null = null;
     let stage: number | null = null;
@@ -492,11 +493,22 @@ export class Engine {
   }
 
   /** Called once when the route is sent. */
-  finishWin(): { bonus: number; flash: boolean } {
+  finishWin(): { bonus: number; flash: boolean; speed: number } {
     const flash = this.drops === 0;
     const bonus = 100 * (this.level.grade + 1) + (flash ? 500 : 0);
-    this.score += bonus;
-    return { bonus, flash };
+    const speed = this.speedBonusNow();
+    this.score += bonus + speed;
+    return { bonus, flash, speed };
+  }
+
+  /**
+   * What sending the route right now would earn for speed. Always 0 in Survival and two-player matches. A route someone
+   * built by hand pays in proportion to its size, so a wall of three holds isn't worth as much as a full one.
+   */
+  speedBonusNow(): number {
+    if (this.level.survival || this.level.versus) return 0;
+    const size = this.level.custom ? Math.min(1, this.startCount / FULL_WALL) : 1;
+    return Math.round(speedBonus(this.level.grade, this.elapsed) * size);
   }
 
   /** 0 at the bottom of the route, 1 at the top. */
