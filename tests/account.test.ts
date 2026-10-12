@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../worker/src/index';
 import { API_URL } from '../src/config';
-import { availableProviders, chooseName, completeSignIn, deleteAccount, expireSession, onAccountChange, signInAddress, signOut, syncNow, syncSoon, takeNotice } from '../src/game/account';
+import { availableProviders, chooseName, completeSignIn, deleteAccount, expireSession, onAccountChange, prepareSignIn, signInAddress, signOut, syncNow, syncSoon, takeNotice } from '../src/game/account';
 import { gradeLevel } from '../src/game/levels';
 import { postScore } from '../src/game/leaderboard';
 import { getAuth, getCloudSave, getLookCode, getPlayerName, recordResult, recordTime, setAuth, setLookCode, setPlayerName } from '../src/game/storage';
@@ -33,7 +33,8 @@ function stubBrowser() {
 
 /** Do the browser's trip to the provider and back. Returns the address the game is opened at afterwards. */
 async function comeBackFromProvider(provider: 'github' | 'google' = 'github', code = provider === 'github' ? 'gh-good' : 'g-good') {
-  const start = await worker.fetch(new Request(signInAddress(provider, PAGE)), env);
+  const challenge = await prepareSignIn(); // also keeps the secret in this browser's storage
+  const start = await worker.fetch(new Request(signInAddress(provider, challenge, PAGE)), env);
   const state = new URL(start.headers.get('Location')!).searchParams.get('state')!;
   const back = await worker.fetch(new Request(`${API_URL}/auth/${provider}/callback?${new URLSearchParams({ code, state })}`), env);
   const to = new URL(back.headers.get('Location')!);
@@ -59,7 +60,7 @@ afterEach(() => {
 describe('signing in', () => {
   it('offers the providers the server has set up, and the address that starts a sign-in', async () => {
     expect(await availableProviders()).toEqual(['github', 'google']);
-    expect(signInAddress('google', PAGE)).toBe(`${API_URL}/auth/google/start?return_to=${encodeURIComponent('https://thesecretstage.vip/Beta-Blast/')}`);
+    expect(signInAddress('google', 'ab'.repeat(32), PAGE)).toBe(`${API_URL}/auth/google/start?return_to=${encodeURIComponent('https://thesecretstage.vip/Beta-Blast/')}&challenge=${'ab'.repeat(32)}`);
   });
 
   it('completes a GitHub sign-in: the code in the address becomes a session on this device', async () => {
@@ -97,14 +98,44 @@ describe('signing in', () => {
     expect(getAuth()).toBeNull();
   });
 
+  it('keeps its secret to itself: only a hash goes to the server, and each secret works once', async () => {
+    const challenge = await prepareSignIn();
+    const secret = store.get('beta-blast.verifier')!;
+    expect(secret).not.toBe(challenge);
+    expect(challenge).toMatch(/^[a-f0-9]{64}$/);
+    expect(secret.length).toBeGreaterThanOrEqual(40);
+    expect(await prepareSignIn()).not.toBe(challenge); // a new secret each time
+    await signIn();
+    expect(store.has('beta-blast.verifier')).toBe(false); // used up
+  });
+
+  it('refuses to finish a sign-in this browser did not start', async () => {
+    const back = await comeBackFromProvider('github');
+    store.delete('beta-blast.verifier'); // as if the link were opened on another device or browser
+    serverCalls.length = 0;
+    await completeSignIn(back, history());
+    expect(getAuth()).toBeNull();
+    expect(takeNotice()).toMatch(/Start again/);
+    expect(serverCalls).toEqual([]);
+
+    // or one that someone else started: this browser holds a different secret
+    const theirs = await comeBackFromProvider('github');
+    store.set('beta-blast.verifier', 'u'.repeat(43));
+    await completeSignIn(theirs, history());
+    expect(getAuth()).toBeNull();
+    expect(takeNotice()).toMatch(/expired/);
+  });
+
   it('copes with a code that has been used, or was made up', async () => {
     const back = await comeBackFromProvider('github');
     await completeSignIn(back, history());
     setAuth(null);
     takeNotice();
+    await prepareSignIn(); // even with a fresh secret in hand
     await completeSignIn(back, history()); // the same code again
     expect(getAuth()).toBeNull();
     expect(takeNotice()).toMatch(/expired/);
+    await prepareSignIn();
     await completeSignIn({ hash: '#login=not-a-real-code-at-all-1234', pathname: '/', search: '' }, history());
     expect(getAuth()).toBeNull();
   });

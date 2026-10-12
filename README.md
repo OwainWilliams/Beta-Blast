@@ -92,6 +92,8 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 
 **Customise**: pick your climber's beanie, shirt and chalk bag (*Customise* in the menu). Each colour is unlocked by playing: sending grades, sending Daily Boulders, lasting in Survival, or a big score. Locked ones show how to earn them. Your climber appears next to your name on the leaderboard.
 
+**Accounts** (optional): tap **Sign in** on the home screen to sign in with GitHub or Google. Your best scores, grades sent, tips seen and outfit then follow you to every device, and your leaderboard name is yours: nobody else can post under it, and a ✓ marks it on the leaderboard. Playing as a guest works exactly as before, with the save kept on that device. Players can delete their account, scores and cloud save from the Account screen. Sign-in is off until the OAuth apps are set up: see [docs/accounts-setup.md](docs/accounts-setup.md).
+
 **Leaderboard**: after a grade, the Daily Boulder or a Survival run, pick a name (letters and numbers, up to 12) and post the score. Each grade, each day's Daily and Survival has its own top 10, under *Leaderboard* in the menu. Custom routes and two-player matches have no board. The game works fine if the API is down. Scores are checked by the API (see *Cheating* below).
 
 ## Balance
@@ -115,8 +117,10 @@ src/game/boards.ts   board ids and names, shared with the Worker and the widget
 src/embed/           the embeddable leaderboard widget (built on its own to dist/embed.js)
 public/              files copied as they are, such as the widget demo page
 src/game/looks.ts    the climber's outfits, what unlocks them, and the look code
+src/game/account.ts  signing in and syncing the save, from the game's side
+src/game/saveMerge.ts how two copies of a save are merged (shared with the Worker)
 src/game/replay.ts   records a round's moves and plays them back, for checking scores
-src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby, Leaderboard, Customise
+src/scenes/          Boot (draws textures), Menu, Game, Editor, Lobby, Leaderboard, Customise, Account
 worker/              the leaderboard API: a Cloudflare Worker with a D1 database
 src/overlays.ts      result, leave and pause screens
 src/effects.ts       chalk bursts, floating text, confetti
@@ -128,7 +132,7 @@ tests/               vitest (see below)
 
 The leaderboard is a small [Cloudflare Worker](https://developers.cloudflare.com/workers/) in `worker/` with a [D1](https://developers.cloudflare.com/d1/) (SQLite) database, both on the free plan. GitHub Pages only serves files, so this is the one moving part.
 
-- The game uses `GET /scores?board=v3` (the top 10, each with the player's `look`, never cached). `POST /scores` takes `{ board, name, score, seconds?, look?, replay }` and keeps each name's best score per board. A player's look is stored once per name, so their climber is the same on every board.
+- The game uses `GET /scores?board=v3` (the top 10, each with the player's `look`, never cached). `POST /scores` takes `{ board, name, score, seconds?, look?, replay }` and keeps each name's best score per board. A player's look is stored once per name, so their climber is the same on every board. Signed-in players post with `Authorization: Bearer <token>`, and their scores go under their account's name. Guests can't post under a name an account has claimed.
 - It only accepts posts from the origins listed in `worker/src/index.ts`, limits each address to 10 posts a minute, and rejects rude names (`worker/src/rules.ts`).
 - `.github/workflows/deploy-worker.yml` creates the tables (`worker/schema.sql`) and deploys the Worker whenever `worker/` changes on `main`. It needs the repository secrets `CLOUDFLARE_API_TOKEN` (the *Edit Cloudflare Workers* template plus *Account, D1, Edit*) and `CLOUDFLARE_ACCOUNT_ID`.
 - The game finds the API through `API_URL` in `src/config.ts`. Set `VITE_API_URL` to use another one, or to an empty string to switch the leaderboard off.
@@ -162,7 +166,7 @@ curl https://beta-blast-api.owaingdwilliams.workers.dev/v1/boards/daily?limit=3
 }
 ```
 
-`seconds` is the length of a Survival run (0 on other boards). `outfit` has the colours of the player's climber as CSS hex, so a page can draw it without knowing the palette. Names are public, the same as on the leaderboard in the game.
+`seconds` is the length of a Survival run (0 on other boards). `verified` is true when the name belongs to a signed-in player. `outfit` has the colours of the player's climber as CSS hex, so a page can draw it without knowing the palette. Names are public, the same as on the leaderboard in the game.
 
 ### Embedding the leaderboard
 

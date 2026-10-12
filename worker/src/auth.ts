@@ -4,6 +4,10 @@
 // The game and the API are on different sites, so cookies would be blocked. Instead the sign-in ends with the
 // browser being sent back to the game with a one-time code in the URL fragment; the game swaps that for a
 // session token (POST /auth/exchange) and sends the token as "Authorization: Bearer ..." from then on.
+//
+// To stop someone starting a sign-in on their own account and tricking another person into finishing it, each
+// sign-in is tied to the browser that began it: the game keeps a secret ("verifier"), sends only its SHA-256
+// ("challenge") when it starts, and must show the secret again to swap the code for a token.
 import { cleanSave, CloudSave, EMPTY_SAVE, MAX_SAVE_BYTES, mergeSaves } from '../../src/game/saveMerge';
 import type { D1 } from './db';
 import { cleanName } from './rules';
@@ -112,20 +116,21 @@ async function providerUserId(provider: Provider, c: { id: string; secret: strin
 // ---------- sign in ----------
 
 /** Step 1: send the browser to the provider. Returns the address to redirect to, or an error. */
-export async function startLogin(db: D1, env: AuthEnv, provider: Provider, returnTo: string | null, allowedOrigins: string, apiOrigin: string, now = Date.now()): Promise<{ url: string } | { error: string; status: number }> {
+export async function startLogin(db: D1, env: AuthEnv, provider: Provider, returnTo: string | null, challenge: string | null, allowedOrigins: string, apiOrigin: string, now = Date.now()): Promise<{ url: string } | { error: string; status: number }> {
   const c = credentials(env, provider);
   if (!c) return { error: `Sign in with ${provider === 'github' ? 'GitHub' : 'Google'} is not set up yet`, status: 503 };
   const back = validReturnTo(returnTo, allowedOrigins);
   if (!back) return { error: 'That return address is not allowed', status: 400 };
+  if (!challenge || !/^[a-f0-9]{64}$/.test(challenge)) return { error: 'Missing sign-in challenge', status: 400 };
   const state = randomToken();
-  await db.prepare('INSERT INTO oauth_states (state, provider, return_to, created_at) VALUES (?1, ?2, ?3, ?4)').bind(state, provider, back, now).run();
+  await db.prepare('INSERT INTO oauth_states (state, provider, return_to, challenge, created_at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(state, provider, back, challenge, now).run();
   return { url: authorizeUrl(provider, c.id, `${apiOrigin}/auth/${provider}/callback`, state) };
 }
 
 /** Step 2: the provider sent them back. Returns where to send the browser next (the game, with a code or an error). */
 export async function finishLogin(db: D1, env: AuthEnv, provider: Provider, params: URLSearchParams, apiOrigin: string, now = Date.now()): Promise<{ url: string } | { error: string; status: number }> {
   const state = params.get('state') ?? '';
-  const row = state ? await db.prepare('SELECT provider, return_to, created_at FROM oauth_states WHERE state = ?1').bind(state).first<{ provider: string; return_to: string; created_at: number }>() : null;
+  const row = state ? await db.prepare('SELECT provider, return_to, challenge, created_at FROM oauth_states WHERE state = ?1').bind(state).first<{ provider: string; return_to: string; challenge: string; created_at: number }>() : null;
   if (state) await db.prepare('DELETE FROM oauth_states WHERE state = ?1').bind(state).run(); // each sign-in can only be finished once
   if (!row || row.provider !== provider || now - row.created_at > STATE_MS) return { error: 'This sign-in has expired. Go back to the game and try again.', status: 400 };
   const back = (reason: string) => ({ url: `${row.return_to}#login_error=${reason}` });
@@ -140,18 +145,19 @@ export async function finishLogin(db: D1, env: AuthEnv, provider: Provider, para
     await db.prepare('INSERT INTO users (id, provider, provider_id, created_at) VALUES (?1, ?2, ?3, ?4)').bind(user.id, provider, sub, now).run();
   }
   const one = randomToken();
-  await db.prepare('INSERT INTO login_codes (code_hash, user_id, expires_at) VALUES (?1, ?2, ?3)').bind(await sha256(one), user.id, now + CODE_MS).run();
+  await db.prepare('INSERT INTO login_codes (code_hash, user_id, challenge, expires_at) VALUES (?1, ?2, ?3, ?4)').bind(await sha256(one), user.id, row.challenge, now + CODE_MS).run();
   await tidy(db, now);
   return { url: `${row.return_to}#login=${one}` };
 }
 
-/** Step 3: the game swaps its one-time code for a session token. */
-export async function exchangeCode(db: D1, code: unknown, now = Date.now()): Promise<{ token: string; user: PublicUser } | null> {
+/** Step 3: the game swaps its one-time code, and the secret it started with, for a session token. */
+export async function exchangeCode(db: D1, code: unknown, verifier: unknown, now = Date.now()): Promise<{ token: string; user: PublicUser } | null> {
   if (typeof code !== 'string' || code.length < 20 || code.length > 100) return null;
+  if (typeof verifier !== 'string' || verifier.length < 20 || verifier.length > 100) return null;
   const hash = await sha256(code);
-  const row = await db.prepare('SELECT user_id, expires_at FROM login_codes WHERE code_hash = ?1').bind(hash).first<{ user_id: string; expires_at: number }>();
-  if (row) await db.prepare('DELETE FROM login_codes WHERE code_hash = ?1').bind(hash).run(); // one use
-  if (!row || row.expires_at < now) return null;
+  const row = await db.prepare('SELECT user_id, challenge, expires_at FROM login_codes WHERE code_hash = ?1').bind(hash).first<{ user_id: string; challenge: string; expires_at: number }>();
+  if (row) await db.prepare('DELETE FROM login_codes WHERE code_hash = ?1').bind(hash).run(); // one use, even if the secret is wrong
+  if (!row || row.expires_at < now || (await sha256(verifier)) !== row.challenge) return null;
   const user = await db.prepare('SELECT id, provider, name FROM users WHERE id = ?1').bind(row.user_id).first<User>();
   if (!user) return null;
   const token = randomToken();

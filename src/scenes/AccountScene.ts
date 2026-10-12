@@ -52,7 +52,7 @@ export class AccountScene extends Phaser.Scene {
         return;
       }
       hint.destroy();
-      providers.forEach((p, i) => makeButton(this, WIDTH / 2, 410 + i * 66, 330, 52, `Sign in with ${PROVIDER_NAMES[p]}`, () => beginSignIn(p), PROVIDER_COLOURS[p], 19));
+      providers.forEach((p, i) => makeButton(this, WIDTH / 2, 410 + i * 66, 330, 52, `Sign in with ${PROVIDER_NAMES[p]}`, () => void beginSignIn(p), PROVIDER_COLOURS[p], 19));
     });
     txt(this, WIDTH / 2, 552, 'We only keep an anonymous id from GitHub or Google. Never your email or your real name.', 12, '#7f8ab3', false).setWordWrapWidth(450);
   }

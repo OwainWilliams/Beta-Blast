@@ -1,8 +1,8 @@
 // The HTTP side of accounts (see auth.ts for what each step does).
 //   GET    /auth/providers                      which sign-in buttons to show
-//   GET    /auth/{github|google}/start          send the browser to the provider (the game links here)
+//   GET    /auth/{github|google}/start          send the browser to the provider (the game links here, with ?return_to= and ?challenge=)
 //   GET    /auth/{github|google}/callback       the provider sends the browser back here
-//   POST   /auth/exchange   { code }            one-time code -> { token, user }
+//   POST   /auth/exchange   { code, verifier }  one-time code (and the secret the browser started with) -> { token, user }
 //   GET    /me                                  who am I
 //   PUT    /me/name         { name }            choose my leaderboard name
 //   GET    /me/save, PUT /me/save { save }      my cloud save
@@ -30,7 +30,7 @@ export async function accountRoute(request: Request, url: URL, path: string, env
     if (!isProvider(flow[1])) return reply({ error: 'Not found' }, 404);
     if (!(await withinLimit(db, `auth:${request.headers.get('CF-Connecting-IP') ?? 'unknown'}`, AUTH_PER_MINUTE))) return page('Too many sign-in attempts. Wait a minute and try again.', 429);
     if (flow[2] === 'start') {
-      const r = await startLogin(db, env, flow[1], url.searchParams.get('return_to'), allowedOrigins, url.origin);
+      const r = await startLogin(db, env, flow[1], url.searchParams.get('return_to'), url.searchParams.get('challenge'), allowedOrigins, url.origin);
       return 'url' in r ? Response.redirect(r.url, 302) : page(r.error, r.status);
     }
     const r = await finishLogin(db, env, flow[1], url.searchParams, url.origin);
@@ -51,7 +51,7 @@ export async function accountRoute(request: Request, url: URL, path: string, env
 
   if (path === '/auth/exchange' && method === 'POST') {
     const b = await body();
-    const result = b ? await exchangeCode(db, b.code) : null;
+    const result = b ? await exchangeCode(db, b.code, b.verifier) : null;
     return result ? reply(result) : reply({ error: 'That sign-in code has expired. Try signing in again.' }, 401);
   }
   if (!path.startsWith('/me')) return reply({ error: 'Not found' }, 404);

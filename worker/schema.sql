@@ -47,11 +47,13 @@ CREATE TABLE IF NOT EXISTS oauth_states (
   state TEXT PRIMARY KEY,
   provider TEXT NOT NULL,
   return_to TEXT NOT NULL,
+  challenge TEXT NOT NULL,              -- SHA-256 of a secret the starting browser keeps (see auth.ts)
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS login_codes (
   code_hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
+  challenge TEXT NOT NULL,
   expires_at INTEGER NOT NULL
 );
 -- The cloud copy of a player's save (best scores, grades sent, outfit).

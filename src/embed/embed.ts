@@ -29,6 +29,7 @@ export interface Row {
   score: number;
   seconds: number;
   outfit: Outfit;
+  verified?: boolean; // the name belongs to a signed-in player
 }
 export interface BoardData {
   board: string;
@@ -80,6 +81,8 @@ li:first-child { border-top: 0; }
 li:nth-child(-n+3) .rank, li:nth-child(-n+3) .name { color: var(--fg); font-weight: 700; }
 .icon { flex: none; }
 .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tick { flex: none; margin-left: -6px; color: #4fc9bd; font-weight: 700; font-size: 13px; }
+.bb.light .tick { color: #0f8a7d; }
 .score { font-variant-numeric: tabular-nums; font-weight: 700; }
 .time { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
 .msg { margin: 8px 0; color: var(--muted); }
@@ -134,7 +137,14 @@ export function renderBoard(doc: Document, data: BoardData, opts: Options): HTML
       const item = el(doc, 'li');
       const score = el(doc, 'span', 'score', row.score.toLocaleString('en-GB'));
       if (data.kind === 'survival' && row.seconds > 0) score.append(el(doc, 'span', 'time', formatTime(row.seconds)));
-      item.append(el(doc, 'span', 'rank', String(row.rank)), climberIcon(doc, row.outfit), el(doc, 'span', 'name', row.name), score);
+      item.append(el(doc, 'span', 'rank', String(row.rank)), climberIcon(doc, row.outfit), el(doc, 'span', 'name', row.name));
+      if (row.verified) {
+        const tick = el(doc, 'span', 'tick', '✓');
+        tick.setAttribute('title', 'Signed-in player');
+        tick.setAttribute('aria-label', 'signed-in player');
+        item.append(tick);
+      }
+      item.append(score);
       list.append(item);
     }
     box.append(list);

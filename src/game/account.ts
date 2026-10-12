@@ -79,11 +79,30 @@ export async function availableProviders(): Promise<Provider[]> {
   return providers;
 }
 
-/** The address that starts a sign-in, and brings the player back to this page afterwards. */
-export const signInAddress = (provider: Provider, page: Pick<Location, 'origin' | 'pathname'> = window.location): string =>
-  `${API_URL}/auth/${provider}/start?return_to=${encodeURIComponent(page.origin + page.pathname)}`;
+const VERIFIER_KEY = 'beta-blast.verifier';
+const hex = (bytes: ArrayBuffer): string => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
 
-export const beginSignIn = (provider: Provider): void => window.location.assign(signInAddress(provider));
+/**
+ * Make a secret that only this browser knows, keep it for when the sign-in comes back, and return its SHA-256.
+ * The server ties the sign-in to that hash, so a sign-in someone else started can't be finished here (or the reverse).
+ */
+export async function prepareSignIn(): Promise<string> {
+  const secret = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  try {
+    localStorage.setItem(VERIFIER_KEY, secret);
+  } catch {
+    /* storage unavailable: the sign-in will fail when it comes back, with a message */
+  }
+  return hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)));
+}
+
+/** The address that starts a sign-in, and brings the player back to this page afterwards. */
+export const signInAddress = (provider: Provider, challenge: string, page: Pick<Location, 'origin' | 'pathname'> = window.location): string =>
+  `${API_URL}/auth/${provider}/start?return_to=${encodeURIComponent(page.origin + page.pathname)}&challenge=${challenge}`;
+
+export async function beginSignIn(provider: Provider): Promise<void> {
+  window.location.assign(signInAddress(provider, await prepareSignIn()));
+}
 
 /** If the page was opened by coming back from a sign-in, finish it. */
 export async function completeSignIn(page: Pick<Location, 'hash' | 'pathname' | 'search'> = window.location, history: Pick<History, 'replaceState'> = window.history): Promise<void> {
@@ -97,7 +116,19 @@ export async function completeSignIn(page: Pick<Location, 'hash' | 'pathname' | 
     changed();
     return;
   }
-  const r = await api<{ token: string; user: { name: string | null; provider: Provider } }>('/auth/exchange', { method: 'POST', body: { code }, auth: false });
+  let verifier: string | null = null;
+  try {
+    verifier = localStorage.getItem(VERIFIER_KEY);
+    localStorage.removeItem(VERIFIER_KEY); // each secret is for one sign-in
+  } catch {
+    /* storage unavailable */
+  }
+  if (!verifier) {
+    notice = "Couldn't finish signing in on this device. Start again from the Account screen.";
+    changed();
+    return;
+  }
+  const r = await api<{ token: string; user: { name: string | null; provider: Provider } }>('/auth/exchange', { method: 'POST', body: { code, verifier }, auth: false });
   if (!r.ok) {
     notice = r.error;
     changed();

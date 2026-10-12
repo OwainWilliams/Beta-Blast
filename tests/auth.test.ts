@@ -8,6 +8,9 @@ import { fakeProviders, googleClaims } from './providers';
 const API = 'https://api.example';
 const GAME = 'https://thesecretstage.vip';
 const RETURN = `${GAME}/Beta-Blast/`;
+// the secret the game keeps, and the hash of it that the server is told
+const VERIFIER = 'v'.repeat(43);
+const CHALLENGE = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(VERIFIER)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 type Env = { DB: ReturnType<typeof fakeD1>; GH_CLIENT_ID?: string; GH_CLIENT_SECRET?: string; GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string };
 
 let env: Env;
@@ -23,7 +26,8 @@ const call = (method: string, path: string, opts: { body?: unknown; token?: stri
   return worker.fetch(new Request(`${API}${path}`, { method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body) }), env);
 };
 const json = async (res: Response) => (await res.json()) as Record<string, any>;
-const start = (provider: string, returnTo: string | null = RETURN, ip?: string) => call('GET', `/auth/${provider}/start${returnTo === null ? '' : `?return_to=${encodeURIComponent(returnTo)}`}`, { origin: null, ip });
+const start = (provider: string, returnTo: string | null = RETURN, ip?: string, challenge: string | null = CHALLENGE) =>
+  call('GET', `/auth/${provider}/start?${new URLSearchParams({ ...(returnTo === null ? {} : { return_to: returnTo }), ...(challenge === null ? {} : { challenge }) })}`, { origin: null, ip });
 const stateOf = (res: Response) => new URL(res.headers.get('Location')!).searchParams.get('state')!;
 const callback = (provider: string, query: Record<string, string>) => call('GET', `/auth/${provider}/callback?${new URLSearchParams(query)}`, { origin: null });
 const loginCodeOf = (res: Response) => new URLSearchParams(new URL(res.headers.get('Location')!).hash.slice(1)).get('login')!;
@@ -32,7 +36,7 @@ const loginCodeOf = (res: Response) => new URLSearchParams(new URL(res.headers.g
 async function signIn(provider: 'github' | 'google' = 'github', code = provider === 'github' ? 'gh-good' : 'g-good'): Promise<string> {
   const state = stateOf(await start(provider));
   const back = await callback(provider, { code, state });
-  const result = await json(await call('POST', '/auth/exchange', { body: { code: loginCodeOf(back) } }));
+  const result = await json(await call('POST', '/auth/exchange', { body: { code: loginCodeOf(back), verifier: VERIFIER } }));
   return result.token;
 }
 const setName = (token: string, name: string) => call('PUT', '/me/name', { token, body: { name } });
@@ -89,6 +93,10 @@ describe('starting a sign-in', () => {
   it('only returns to the game\'s own sites', async () => {
     for (const bad of ['https://evil.example/', 'https://thesecretstage.vip.evil.example/', 'javascript:alert(1)', 'not a url', '', null]) expect((await start('github', bad)).status).toBe(400);
     for (const ok of [RETURN, 'https://owainwilliams.github.io/Beta-Blast/', 'http://localhost:5173/']) expect((await start('github', ok)).status).toBe(302);
+  });
+
+  it('needs the challenge that ties the sign-in to the browser that started it', async () => {
+    for (const bad of [null, '', 'short', 'g'.repeat(64), CHALLENGE.toUpperCase(), `${CHALLENGE}0`]) expect((await start('github', RETURN, undefined, bad)).status).toBe(400);
   });
 
   it('knows only GitHub and Google', async () => {
@@ -173,25 +181,37 @@ describe('the one-time code and the session', () => {
 
   it('swaps the code for a session token, once', async () => {
     const code = await loginCode();
-    const res = await call('POST', '/auth/exchange', { body: { code } });
+    const res = await call('POST', '/auth/exchange', { body: { code, verifier: VERIFIER } });
     const body = await json(res);
     expect(res.status).toBe(200);
     expect(body.token.length).toBeGreaterThan(30);
     expect(body.user).toEqual({ name: null, provider: 'github' });
-    expect((await call('POST', '/auth/exchange', { body: { code } })).status).toBe(401);
+    expect((await call('POST', '/auth/exchange', { body: { code, verifier: VERIFIER } })).status).toBe(401);
   });
 
   it('refuses codes that are wrong, old, or not codes', async () => {
     const code = await loginCode();
     await env.DB.prepare('UPDATE login_codes SET expires_at = 1').run();
-    expect((await call('POST', '/auth/exchange', { body: { code } })).status).toBe(401);
-    for (const bad of ['', 'short', 'x'.repeat(40), 123, null, undefined, { a: 1 }]) expect((await call('POST', '/auth/exchange', { body: { code: bad } })).status).toBe(401);
+    expect((await call('POST', '/auth/exchange', { body: { code, verifier: VERIFIER } })).status).toBe(401);
+    for (const bad of ['', 'short', 'x'.repeat(40), 123, null, undefined, { a: 1 }]) expect((await call('POST', '/auth/exchange', { body: { code: bad, verifier: VERIFIER } })).status).toBe(401);
     expect((await call('POST', '/auth/exchange', { body: 'nope' as unknown as object })).status).toBe(401);
+  });
+
+  it('will not give a session to someone who did not start the sign-in (login CSRF)', async () => {
+    // an attacker starts a sign-in with their own secret and gets the one-time code for their account...
+    const code = await loginCode();
+    // ...then tricks someone into opening the finished sign-in, in a browser that holds a different secret (or none)
+    expect((await call('POST', '/auth/exchange', { body: { code, verifier: 'w'.repeat(43) } })).status).toBe(401);
+    expect((await call('POST', '/auth/exchange', { body: { code, verifier: VERIFIER } })).status).toBe(401); // and the code is spent either way
+    const another = await loginCode();
+    expect((await call('POST', '/auth/exchange', { body: { code: another } })).status).toBe(401); // no secret at all
+    for (const bad of ['', 'short', 5, null, {}]) expect((await call('POST', '/auth/exchange', { body: { code: await loginCode(), verifier: bad } })).status).toBe(401);
+    expect(await rows('SELECT 1 FROM sessions')).toHaveLength(0);
   });
 
   it('stores only a hash of the token and of the code', async () => {
     const code = await loginCode();
-    const { token } = await json(await call('POST', '/auth/exchange', { body: { code } }));
+    const { token } = await json(await call('POST', '/auth/exchange', { body: { code, verifier: VERIFIER } }));
     const dump = JSON.stringify([await rows('SELECT * FROM sessions'), await rows('SELECT * FROM login_codes')]);
     expect(dump).not.toContain(token);
     expect(dump).not.toContain(code);
@@ -199,8 +219,8 @@ describe('the one-time code and the session', () => {
 
   it('only talks to the game\'s own sites', async () => {
     const code = await loginCode();
-    expect((await call('POST', '/auth/exchange', { body: { code }, origin: 'https://evil.example' })).status).toBe(403);
-    expect((await call('POST', '/auth/exchange', { body: { code }, origin: null })).status).toBe(403);
+    expect((await call('POST', '/auth/exchange', { body: { code, verifier: VERIFIER }, origin: 'https://evil.example' })).status).toBe(403);
+    expect((await call('POST', '/auth/exchange', { body: { code, verifier: VERIFIER }, origin: null })).status).toBe(403);
   });
 
   it('knows who is signed in, until they sign out or the session runs out', async () => {
