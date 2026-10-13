@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { ISSUES_URL, WIDTH } from '../config';
 import { arcadeLevel } from '../game/arcade';
-import { dailyLevel, gradeLevel, LevelSpec, survivalLevel } from '../game/levels';
+import { ModeId, modeInfo } from '../game/modes';
+import { dailyLevel, LevelSpec, survivalLevel } from '../game/levels';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
 import { getBest, getBestTime, getMusic, getShake, isSent, setShake } from '../game/storage';
 import { isMutedNow, toggleMute, unlockAudio } from '../game/audio';
@@ -12,9 +13,6 @@ import { OVERALL } from '../game/boards';
 import { getAuth } from '../game/storage';
 import { currentTheme } from '../game/themes';
 import { makeButton, makeToggle, txt } from '../ui';
-
-const PAGE = 8;
-let menuPage: number | null = null; // remembered while the page is open
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -32,46 +30,23 @@ export class MenuScene extends Phaser.Scene {
     txt(this, WIDTH / 2, 186, 'Shoot the holds. Send the route.', 17, '#c9d1ee', false);
     this.previewStamp(472, 114);
 
-    // The ways to play: two solo modes side by side, then the versus mode.
+    // The ways to play, each with a ? that explains it.
     const daily = dailyLevel();
-    makeButton(this, 140, 245, 250, 52, `Daily Boulder (V${daily.grade})${isSent(daily.id) ? '  ✓' : ''}`, () => this.play(daily), 0xd9622b, 19);
-    txt(this, 140, 281, `Best today: ${getBest(daily.id)}`, 14, '#c9d1ee', false);
-    makeButton(this, 400, 245, 250, 52, 'Survival', () => this.play(survivalLevel()), 0xc23b5a, 22);
-    const longest = getBestTime('survival');
-    txt(this, 400, 281, longest ? `Best ${getBest('survival')} · longest ${formatTime(longest)}` : 'How long can you last?', 14, '#c9d1ee', false);
-    makeButton(this, 140, 332, 250, 46, '2 Player', () => this.scene.start('Lobby'), 0x2e8b57, 21);
-    makeButton(this, 400, 332, 250, 46, 'Arcade', () => this.play(arcadeLevel()), 0xb8860b, 21);
-    txt(this, 140, 366, 'Race a friend online', 12, '#c9d1ee', false);
-    txt(this, 400, 366, 'Weekly top 10 · your initials', 12, '#c9d1ee', false);
-
-    // Grades never run out, so they come in pages. Open on the page with your first unsent grade.
-    if (menuPage === null) {
-      let first = 0;
-      while (isSent(`v${first}`)) first++;
-      menuPage = Math.floor(first / PAGE);
-    }
-    const from = menuPage * PAGE;
-    txt(this, WIDTH / 2, 402, `Grades V${from} to V${from + PAGE - 1}`, 19);
-    const arrow = (x: number, label: string, enabled: boolean, delta: number) => {
-      const b = makeButton(this, x, 402, 44, 34, label, () => {
-        if (!enabled) return;
-        menuPage = Math.max(0, (menuPage ?? 0) + delta);
-        this.scene.restart();
-      }, enabled ? 0x59627f : 0x2a2f42, 20);
-      if (!enabled) b.setAlpha(0.4);
+    let nextGrade = 0;
+    while (isSent(`v${nextGrade}`)) nextGrade++;
+    const mode = (x: number, y: number, w: number, label: string, sub: string, id: ModeId, go: () => void, size = 22) => {
+      const info = modeInfo(id);
+      const colour = id === 'grades' ? theme.grade : info.colour;
+      makeButton(this, x, y, w, 60, label, go, colour, size);
+      txt(this, x, y + 42, sub, 13, '#c9d1ee', false);
+      this.helpButton(x + w / 2 - 22, y, id);
     };
-    arrow(100, '‹', menuPage > 0, -1);
-    arrow(440, '›', true, 1);
-    for (let i = 0; i < PAGE; i++) {
-      const g = from + i;
-      const level = gradeLevel(g);
-      const x = 75 + (i % 4) * 130;
-      const y = 456 + Math.floor(i / 4) * 76;
-      const sent = isSent(level.id);
-      makeButton(this, x, y, 112, 50, `V${g}${sent ? ' ✓' : ''}`, () => this.play(level), sent ? theme.gradeSent : theme.grade, 22);
-      const best = getBest(level.id);
-      if (best > 0) txt(this, x, y + 34, `best ${best}`, 12, '#9aa6cf', false);
-    }
+    mode(140, 262, 250, 'Grades', `Next up: V${nextGrade}`, 'grades', () => this.scene.start('Grades'));
+    mode(400, 262, 250, `Daily Boulder${isSent(daily.id) ? '  ✓' : ''}`, `V${daily.grade} today · best ${getBest(daily.id)}`, 'daily', () => this.play(daily), 19);
+    const longest = getBestTime('survival');
+    mode(140, 372, 250, 'Survival', longest ? `Best ${getBest('survival')} · longest ${formatTime(longest)}` : 'How long can you last?', 'survival', () => this.play(survivalLevel()));
+    mode(400, 372, 250, 'Arcade', 'Weekly top 10 · your initials', 'arcade', () => this.play(arcadeLevel()));
+    mode(270, 482, 510, '2 Player', 'Race a friend online', 'versus', () => this.scene.start('Lobby'));
 
     const auth = getAuth();
     makeButton(this, WIDTH / 2, 24, 116, 32, auth ? (auth.name ?? 'Account') : 'Sign in', () => this.scene.start('Account'), auth ? 0x2e8b57 : 0x59627f, 14);
@@ -97,6 +72,15 @@ export class MenuScene extends Phaser.Scene {
     this.issuesLink(WIDTH / 2, 708);
 
     this.input.once('pointerdown', unlockAudio);
+  }
+
+  /** A small round "?" that opens the How to play page for a mode. */
+  private helpButton(x: number, y: number, mode: ModeId): void {
+    const dot = this.add.circle(x, y, 13, 0x0d1020, 0.55).setStrokeStyle(2, 0xffffff, 0.8).setInteractive({ useHandCursor: true });
+    dot.on('pointerover', () => dot.setFillStyle(0x0d1020, 0.9));
+    dot.on('pointerout', () => dot.setFillStyle(0x0d1020, 0.55));
+    dot.on('pointerup', () => this.scene.start('HowTo', { mode }));
+    txt(this, x, y, '?', 17);
   }
 
   /** A small "report a problem" link to the project's issues on GitHub. */

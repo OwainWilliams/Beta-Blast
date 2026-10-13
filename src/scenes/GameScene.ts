@@ -671,7 +671,7 @@ export class GameScene extends Phaser.Scene {
 
   private leave(): void {
     this.net?.close();
-    this.scene.start(this.data0.from === 'editor' ? 'Editor' : 'Menu', { code: this.data0.code });
+    this.scene.start(this.data0.from === 'editor' ? 'Editor' : this.isGrade() ? 'Grades' : 'Menu', { code: this.data0.code });
   }
 
   private restart(): void {
@@ -738,8 +738,14 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
+  /** A numbered grade (not a Daily, custom route, Survival, Arcade or match): leaving goes back to the grade list. */
+  private isGrade(): boolean {
+    const l = this.level;
+    return !l.daily && !l.custom && !l.survival && !l.versus;
+  }
+
   private leaveLabel(): string {
-    return this.data0.from === 'editor' ? 'Back to editor' : 'Menu';
+    return this.data0.from === 'editor' ? 'Back to editor' : this.isGrade() ? 'Grades' : 'Menu';
   }
 
   // ---------- two-player match ----------

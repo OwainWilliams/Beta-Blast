@@ -41,6 +41,8 @@ npm run build    # production build in dist/
 
 ## How to play
 
+Every way to play on the menu has a **?** beside it that explains how that mode works. **Grades** opens the list of numbered grades (V0, V1, ...); the other modes start straight away.
+
 - **Aim**: move the mouse or drag a finger. Arrow keys / A / D also work. The chalk bag leans toward your aim and a ghost hold shows where your shot will land.
 - **Shoot**: release the click or tap, or press Space.
 - **Swap**: tap NEXT, or press S.

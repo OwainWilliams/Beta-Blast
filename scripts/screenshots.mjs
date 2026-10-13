@@ -92,6 +92,14 @@ try {
   const menu = await newPage(context);
   await sleep(1200);
   await shot(menu, 'menu');
+  await inPage(menu, `game.scene.getScene('Menu').scene.start('Grades');`);
+  await sleep(700);
+  await shot(menu, 'grades');
+  await inPage(menu, `game.scene.getScene('Grades').scene.start('HowTo', { mode: 'arcade' });`);
+  await sleep(700);
+  await shot(menu, 'how-to');
+  await inPage(menu, `game.scene.getScene('HowTo').scene.start('Menu');`);
+  await sleep(700);
 
   // 2. a hard wall with obstacles, two pops in a row for a combo
   await startGame(menu, `m.levels.gradeLevel(8)`);
@@ -158,14 +166,14 @@ try {
   await inPage(A, `game.scene.getScene('Game').scene.start('Menu');`);
   const B = await newPage(context);
   await sleep(600);
-  await A.mouse.click(140, 332); // 2 Player
+  await A.mouse.click(270, 482); // 2 Player
   await sleep(600);
   await A.mouse.click(150, 492); // host in this tab
   await sleep(900);
   await shot(A, 'lobby');
   const keyword = await inPage(A, `return game.scene.getScene('Lobby').host.code;`);
   B.on('dialog', (d) => d.accept(keyword));
-  await B.mouse.click(140, 332);
+  await B.mouse.click(270, 482);
   await sleep(600);
   await B.mouse.click(390, 492); // join from another tab
   await sleep(1800);
