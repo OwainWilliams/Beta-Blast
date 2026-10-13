@@ -222,6 +222,19 @@ try {
   await sleep(900);
   await shot(C, 'account');
   await C.evaluate(() => localStorage.removeItem('beta-blast.auth'));
+
+  // 9. the Umbraco theme: pick it on the Customise screen, then look at the menu and a wall
+  await inPage(C, `game.scene.getScene('Account').scene.start('Customise');`);
+  await sleep(600);
+  await C.mouse.click(270, 612); // the Theme button
+  await sleep(600);
+  await shot(C, 'theme-customise');
+  await inPage(C, `game.scene.getScene('Customise').scene.start('Menu');`);
+  await sleep(1200);
+  await shot(C, 'theme-menu');
+  await startGame(C, `m.levels.gradeLevel(5)`);
+  await sleep(800);
+  await shot(C, 'theme-game');
 } finally {
   await browser.close();
   server.kill();

@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { WIDTH } from '../config';
 import { encodeLook, isUnlocked, Look, lookOrDefault, SLOT_NAMES, SLOTS, SWATCHES, unlockedCount, unlockHint } from '../game/looks';
-import { getLookCode, getProgress, setLookCode } from '../game/storage';
+import { getLookCode, getProgress, getThemeId, setLookCode, setThemeId } from '../game/storage';
+import { currentTheme, nextTheme } from '../game/themes';
+import type { BootScene } from './BootScene';
 import { Climber, makeButton, txt } from '../ui';
 
 const ROW_Y = [335, 425, 515]; // swatch rows: beanie, shirt, chalk bag
@@ -53,7 +55,14 @@ export class CustomiseScene extends Phaser.Scene {
     this.hint = txt(this, WIDTH / 2, 572, 'Tap a colour. Locked ones show how to earn them.', 15, '#9aa6cf', false);
     this.draw(progress);
 
-    makeButton(this, WIDTH / 2, 660, 220, 46, 'Back', () => this.scene.start('Menu'), 0x59627f, 20);
+    makeButton(this, WIDTH / 2, 612, 260, 40, `Theme: ${currentTheme().name}`, () => this.changeTheme(), 0x3a4260, 18);
+    makeButton(this, WIDTH / 2, 668, 220, 42, 'Back', () => this.scene.start('Menu'), 0x59627f, 20);
+  }
+
+  private changeTheme(): void {
+    setThemeId(nextTheme(getThemeId()).id);
+    (this.scene.get('Boot') as BootScene).applyTheme();
+    this.scene.restart();
   }
 
   private say(text: string, colour: string): void {

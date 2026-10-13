@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { HOLD_COLOURS } from './config';
+import { holdColours } from './config';
 import { LOSE_ROW } from './game/grid';
 import { txt } from './ui';
 
@@ -45,7 +45,7 @@ export class OpponentPanel {
         const ch = row[c];
         if (ch === '.') continue;
         const type = Number(ch);
-        const colour = type < 5 ? HOLD_COLOURS[type] : OBSTACLE[type as 6 | 7];
+        const colour = type < 5 ? holdColours()[type] : OBSTACLE[type as 6 | 7];
         g.fillStyle(colour, 1).fillCircle(this.left + COL_W / 2 + (c + (shifted ? 0.5 : 0)) * COL_W, this.top + ROW_H / 2 + r * ROW_H, 2.7);
       }
     });
