@@ -187,20 +187,22 @@ try {
   await shot(A, 'two-player');
   await B.close();
 
-  // 8. customising the climber, then the leaderboard showing everyone's (the API is faked, so this works offline)
+  // 8. customising the climber, then the overall leaderboard showing everyone's, then a signed-in account (the API is faked, so this works offline)
   const C = await newPage(context);
   await C.route('**/*workers.dev/**', (r) => {
     const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type' };
     if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
+    const board = new URL(r.request().url()).searchParams.get('board') ?? 'v3';
+    const totals = board === 'overall'; // the overall board adds up each player's best scores, so its numbers are bigger
     const scores = [
-      { name: 'Ann', score: 9100, look: '742' },
-      { name: 'Owain', score: 8200, look: '151' },
+      { name: 'Ann', score: 9100, look: '742', verified: true },
+      { name: 'Owain', score: 8200, look: '151', verified: true },
       { name: 'Sam', score: 7400, look: '270' },
-      { name: 'ClimbKing99', score: 6900, look: '507' },
+      { name: 'ClimbKing99', score: 6900, look: '507', verified: true },
       { name: 'Pip', score: 5100, look: '365' },
       { name: 'Bob', score: 3000, look: '' },
-    ].map((e) => ({ seconds: 0, ...e }));
-    return r.fulfill({ json: { board: 'v3', scores }, headers: cors });
+    ].map((e) => ({ seconds: 0, verified: false, ...e, score: totals ? e.score * 3 + 400 : e.score }));
+    return r.fulfill({ json: { board, scores }, headers: cors });
   });
   await inPage(C, `game.scene.getScene('Menu').scene.start('Customise');`);
   await sleep(800);
@@ -211,9 +213,15 @@ try {
   await C.mouse.click(52 + 7 * 62, 335); // a locked one, to show how it is earned
   await sleep(500);
   await shot(C, 'customise');
-  await inPage(C, `game.scene.getScene('Customise').scene.start('Leaderboard', { board: 'v3' });`);
+  await inPage(C, `game.scene.getScene('Customise').scene.start('Leaderboard', { board: 'overall' });`);
   await sleep(1000);
   await shot(C, 'leaderboard');
+  // signed in with GitHub, with a leaderboard name
+  await C.evaluate(() => localStorage.setItem('beta-blast.auth', JSON.stringify({ token: 'x'.repeat(43), name: 'Owain', provider: 'github' })));
+  await inPage(C, `game.scene.getScene('Leaderboard').scene.start('Account');`);
+  await sleep(900);
+  await shot(C, 'account');
+  await C.evaluate(() => localStorage.removeItem('beta-blast.auth'));
 } finally {
   await browser.close();
   server.kill();
