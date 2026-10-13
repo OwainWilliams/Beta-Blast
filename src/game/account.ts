@@ -113,7 +113,7 @@ export async function completeSignIn(page: Pick<Location, 'hash' | 'pathname' | 
   if (!code && !error) return;
   history.replaceState(null, '', page.pathname + page.search); // the code is single-use, but there's no reason to leave it in the address bar
   if (error || !code) {
-    notice = error === 'denied' ? 'Sign-in cancelled' : "Couldn't sign in. Please try again.";
+    notice = error === 'denied' ? 'Sign-in cancelled' : error === 'banned' ? "This account can't be used in Beta Blast." : "Couldn't sign in. Please try again.";
     changed();
     return;
   }

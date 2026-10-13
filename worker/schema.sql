@@ -74,3 +74,29 @@ CREATE TABLE IF NOT EXISTS arcade_scores (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS arcade_by_week ON arcade_scores (week, score DESC, id);
+
+-- Moderation (see admin/ and docs/admin.md).
+-- Names nobody may post under or choose, because they were removed for being fake or offensive.
+CREATE TABLE IF NOT EXISTS banned_names (
+  name TEXT NOT NULL COLLATE NOCASE PRIMARY KEY,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+-- Accounts (by the provider's own id) that may no longer sign in.
+CREATE TABLE IF NOT EXISTS banned_accounts (
+  provider TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (provider, provider_id)
+);
+-- Everything an admin did, with what was removed so a removal can be undone.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at INTEGER NOT NULL,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '{}',
+  undone INTEGER NOT NULL DEFAULT 0
+);

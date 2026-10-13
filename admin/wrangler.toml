@@ -1,0 +1,11 @@
+name = "beta-blast-admin"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+# Keep the Access settings added in the Cloudflare dashboard when this is deployed.
+keep_vars = true
+
+# The same database as the game's API.
+[[d1_databases]]
+binding = "DB"
+database_name = "beta-blast-scores"
+database_id = "98e9912b-4730-4eaf-b269-1f970aad67d0"
