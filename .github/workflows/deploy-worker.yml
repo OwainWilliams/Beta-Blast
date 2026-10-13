@@ -1,11 +1,12 @@
 name: Deploy leaderboard API
 
-# Publishes the Cloudflare Worker in worker/ when it changes on main.
+# Publishes the Cloudflare Worker in worker/ when it changes on main. The Worker also uses the game's rules from
+# src/game/ (scores, boards, outfits), so a change there redeploys it too.
 # Needs the repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
 on:
   push:
     branches: [main]
-    paths: ['worker/**', '.github/workflows/deploy-worker.yml']
+    paths: ['worker/**', 'src/game/**', '.github/workflows/deploy-worker.yml']
   workflow_dispatch:
 
 permissions:

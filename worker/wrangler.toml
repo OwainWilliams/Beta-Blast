@@ -1,6 +1,8 @@
 name = "beta-blast-api"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
+# Keep variables and secrets added in the Cloudflare dashboard (the sign-in client ids and secrets) when this is deployed.
+keep_vars = true
 
 [[d1_databases]]
 binding = "DB"
