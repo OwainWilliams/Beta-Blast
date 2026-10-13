@@ -1,4 +1,5 @@
 import { LAUNCH_LX, LAUNCH_LY } from './game/engine';
+import { currentTheme } from './game/themes';
 import { H, LOSE_ROW, R } from './game/grid';
 
 export const WIDTH = 540;
@@ -9,8 +10,8 @@ export const LAUNCH_X = GRID_X + LAUNCH_LX; // the engine works in grid coordina
 export const LAUNCH_Y = LAUNCH_LY;
 export const LOSE_Y = R + LOSE_ROW * H;
 
-// Tape colours, like a gym's colour-coded routes.
-export const HOLD_COLOURS = [0xe5484d, 0x3e8ef7, 0x30c46b, 0xf5c518, 0xa05cf0];
+// Tape colours, like a gym's colour-coded routes. They come from the current theme.
+export const holdColours = (): number[] => currentTheme().holds;
 
 export { DEFAULT_API_URL as API_URL } from './apiUrl';
 

@@ -9,6 +9,7 @@ import { formatTime } from '../game/format';
 import { onAccountChange, takeNotice } from '../game/account';
 import { OVERALL } from '../game/boards';
 import { getAuth } from '../game/storage';
+import { currentTheme } from '../game/themes';
 import { makeButton, makeToggle, txt } from '../ui';
 
 const PAGE = 8;
@@ -20,12 +21,14 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    const theme = currentTheme();
     this.add.image(0, 0, 'wall').setOrigin(0);
     for (let i = 0; i < 5; i++) {
       const h = this.add.image(90 + i * 90, 72, `hold-${i}`).setScale(1.1);
       this.tweens.add({ targets: h, y: 80, duration: 900 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     }
-    txt(this, WIDTH / 2, 144, 'BETA BLAST', 56, '#ffd166');
+    txt(this, WIDTH / 2, 144, 'BETA BLAST', 56, theme.title);
+    this.logo(theme, 56, 150);
     txt(this, WIDTH / 2, 186, 'Shoot the holds. Send the route.', 17, '#c9d1ee', false);
     this.previewStamp(472, 114);
 
@@ -62,7 +65,7 @@ export class MenuScene extends Phaser.Scene {
       const x = 75 + (i % 4) * 130;
       const y = 456 + Math.floor(i / 4) * 76;
       const sent = isSent(level.id);
-      makeButton(this, x, y, 112, 50, `V${g}${sent ? ' ✓' : ''}`, () => this.play(level), sent ? 0x2e8b57 : 0x2f6fdd, 22);
+      makeButton(this, x, y, 112, 50, `V${g}${sent ? ' ✓' : ''}`, () => this.play(level), sent ? theme.gradeSent : theme.grade, 22);
       const best = getBest(level.id);
       if (best > 0) txt(this, x, y + 34, `best ${best}`, 12, '#9aa6cf', false);
     }
@@ -91,6 +94,13 @@ export class MenuScene extends Phaser.Scene {
     this.issuesLink(WIDTH / 2, 708);
 
     this.input.once('pointerdown', unlockAudio);
+  }
+
+  /** The theme's logo, if it has one and the file loaded, in the corner beside the title. */
+  private logo(theme: ReturnType<typeof currentTheme>, x: number, y: number): void {
+    if (!theme.logo || !this.textures.exists(theme.logo.key)) return;
+    const img = this.add.image(x, y, theme.logo.key).setTint(theme.logo.tint);
+    img.setScale(54 / Math.max(img.width, img.height));
   }
 
   /** A small "report a problem" link to the project's issues on GitHub. */

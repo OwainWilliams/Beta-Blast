@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { BOMB, D, SLICK, VOLUME, WILD } from '../game/grid';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
 import { codeFromInput as joinCodeFromInput } from '../net/codes';
-import { HOLD_COLOURS, WIDTH, HEIGHT, GRID_X } from '../config';
+import { holdColours, WIDTH, HEIGHT, GRID_X } from '../config';
+import { currentTheme, THEMES } from '../game/themes';
 
 const shade = (c: number, amt: number) =>
   amt >= 0
@@ -15,14 +16,25 @@ export class BootScene extends Phaser.Scene {
     super('Boot');
   }
 
-  create(): void {
-    HOLD_COLOURS.forEach((col, i) => this.makeHold(i, col));
-    this.makeBomb();
+  preload(): void {
+    for (const t of THEMES) if (t.logo) this.load.svg(t.logo.key, t.logo.file);
+  }
+
+  /** The artwork that follows the theme: the route-coloured holds, the mega jug and the wall. */
+  applyTheme(): void {
+    const stale = [0, 1, 2, 3, 4, WILD].map((t) => `hold-${t}`).concat('wall');
+    for (const key of stale) if (this.textures.exists(key)) this.textures.remove(key); // generateTexture would draw over the old one
+    holdColours().forEach((col, i) => this.makeHold(i, col));
     this.makeWild();
+    this.makeWall();
+  }
+
+  create(): void {
+    this.applyTheme();
+    this.makeBomb();
     this.makeVolume(false);
     this.makeVolume(true);
     this.makeSlick();
-    this.makeWall();
     const g = this.add.graphics();
     g.fillStyle(0xffffff, 1).fillCircle(4, 4, 4);
     g.generateTexture('chalk', 8, 8);
@@ -102,7 +114,7 @@ export class BootScene extends Phaser.Scene {
     const g = this.add.graphics();
     const c = D / 2;
     g.fillStyle(0x20242f).fillCircle(c, c + 2, 22);
-    HOLD_COLOURS.forEach((col, i) => {
+    holdColours().forEach((col, i) => {
       g.fillStyle(col);
       g.slice(c, c, 21, Phaser.Math.DegToRad(-90 + i * 72), Phaser.Math.DegToRad(-90 + (i + 1) * 72), false);
       g.fillPath();
@@ -147,19 +159,20 @@ export class BootScene extends Phaser.Scene {
 
   private makeWall(): void {
     const g = this.add.graphics();
-    g.fillStyle(0x1d2230).fillRect(0, 0, WIDTH, HEIGHT);
-    g.fillStyle(0x262c3d).fillRect(GRID_X, 0, WIDTH - GRID_X * 2, 600);
+    const t = currentTheme().wall;
+    g.fillStyle(t.bg).fillRect(0, 0, WIDTH, HEIGHT);
+    g.fillStyle(t.panel).fillRect(GRID_X, 0, WIDTH - GRID_X * 2, 600);
     // panel seams
-    g.lineStyle(2, 0x151925, 1);
+    g.lineStyle(2, t.seam, 1);
     for (let x = GRID_X; x <= WIDTH - GRID_X; x += 240) g.lineBetween(x, 0, x, 600);
     for (let y = 0; y <= 600; y += 240) g.lineBetween(GRID_X, y, WIDTH - GRID_X, y);
     // T-nut holes
-    g.fillStyle(0x161a26, 1);
+    g.fillStyle(t.hole, 1);
     for (let y = 24; y < 600; y += 48) for (let x = GRID_X + 24; x < WIDTH - GRID_X; x += 48) g.fillCircle(x, y, 2.5);
     // crash pad
-    g.fillStyle(0x3a4160).fillRect(0, 600, WIDTH, HEIGHT - 600);
-    g.fillStyle(0x4b5480).fillRect(0, 600, WIDTH, 6);
-    g.lineStyle(2, 0x2c3250, 1);
+    g.fillStyle(t.pad).fillRect(0, 600, WIDTH, HEIGHT - 600);
+    g.fillStyle(t.padEdge).fillRect(0, 600, WIDTH, 6);
+    g.lineStyle(2, t.padLine, 1);
     for (let x = 0; x <= WIDTH; x += 90) g.lineBetween(x, 606, x, HEIGHT);
     g.generateTexture('wall', WIDTH, HEIGHT);
     g.destroy();

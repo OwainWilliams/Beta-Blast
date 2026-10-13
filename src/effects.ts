@@ -1,6 +1,6 @@
 // Small visual effects, so the game scene doesn't have to carry the details of each one.
 import Phaser from 'phaser';
-import { GRID_X, HEIGHT, HOLD_COLOURS, WIDTH } from './config';
+import { GRID_X, HEIGHT, holdColours, WIDTH } from './config';
 import { txt } from './ui';
 
 /** A short message that floats up from a spot and fades ("+120"). */
@@ -29,7 +29,7 @@ export function chalkBurst(scene: Phaser.Scene, x: number, y: number): void {
 export function colourRing(scene: Phaser.Scene, x: number, y: number, type: number): void {
   for (let i = 0; i < 10; i++) {
     const a = (Math.PI * 2 * i) / 10;
-    const fleck = scene.add.image(x, y, 'chalk').setTint(HOLD_COLOURS[type]).setDepth(40).setScale(1.2);
+    const fleck = scene.add.image(x, y, 'chalk').setTint(holdColours()[type]).setDepth(40).setScale(1.2);
     scene.tweens.add({
       targets: fleck,
       x: x + Math.cos(a) * 42,
@@ -46,7 +46,7 @@ export function colourRing(scene: Phaser.Scene, x: number, y: number, type: numb
 /** A shower of chalk and tape falling down the whole screen. */
 export function confetti(scene: Phaser.Scene): void {
   for (let i = 0; i < 70; i++) {
-    const colour = i % 3 === 0 ? 0xffffff : HOLD_COLOURS[i % HOLD_COLOURS.length];
+    const colour = i % 3 === 0 ? 0xffffff : holdColours()[i % 5];
     const bit = scene.add.rectangle(Phaser.Math.Between(GRID_X, WIDTH - GRID_X), -20, 8, 14, colour).setDepth(80);
     scene.tweens.add({
       targets: bit,
