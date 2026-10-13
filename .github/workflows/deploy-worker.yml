@@ -3,6 +3,9 @@ name: Deploy leaderboard API
 # Publishes the Cloudflare Worker in worker/ when it changes on main. The Worker also uses the game's rules from
 # src/game/ (scores, boards, outfits), so a change there redeploys it too.
 # Needs the repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+# Sign-in (optional): add the repository secrets OAUTH_GITHUB_CLIENT_ID and OAUTH_GITHUB_CLIENT_SECRET, and/or
+# OAUTH_GOOGLE_CLIENT_ID and OAUTH_GOOGLE_CLIENT_SECRET (GitHub doesn't allow secret names that start with GITHUB_).
+# Each deploy gives the ones that are present to the Worker as secrets (see docs/accounts-setup.md).
 on:
   push:
     branches: [main]
@@ -19,10 +22,30 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      GH_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+      GH_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+      GOOGLE_CLIENT_ID: ${{ secrets.OAUTH_GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.OAUTH_GOOGLE_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
+      # Only pass on a provider when both its id and its secret are set, so a deploy never fails (or wipes a
+      # secret set in the Cloudflare dashboard) just because sign-in isn't configured here.
+      - name: Work out which sign-in secrets to send
+        id: signin
+        run: |
+          names=""
+          [ -n "$GH_CLIENT_ID" ] && [ -n "$GH_CLIENT_SECRET" ] && names="$names GH_CLIENT_ID GH_CLIENT_SECRET"
+          [ -n "$GOOGLE_CLIENT_ID" ] && [ -n "$GOOGLE_CLIENT_SECRET" ] && names="$names GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET"
+          {
+            echo 'names<<EOF'
+            for n in $names; do echo "$n"; done
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+          echo "Sending to the Worker:${names:- nothing}"
       - uses: cloudflare/wrangler-action@v3
         with:
+          secrets: ${{ steps.signin.outputs.names }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
