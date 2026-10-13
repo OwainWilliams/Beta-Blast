@@ -11,8 +11,8 @@ export interface Theme {
   title: string;
   grade: number;
   gradeSent: number;
-  /** A logo file under public/, drawn in white and tinted with `tint`. Optional. */
-  logo?: { key: string; file: string; tint: number };
+  /** Draw every route hold as a coloured disc with this white single-colour mark (an SVG under public/) in it. Optional. */
+  holdMark?: { key: string; file: string };
   /** A full-colour emblem (an SVG with its own colours, drawn as it is), shown when a route is sent. */
   badge?: { key: string; file: string };
 }
@@ -36,7 +36,7 @@ export const THEMES: Theme[] = [
     title: '#f5c1bc',
     grade: 0x3544b1,
     gradeSent: 0x2fa89a,
-    logo: { key: 'logo-umbraco', file: 'themes/umbraco-logo.svg', tint: 0xf5c1bc },
+    holdMark: { key: 'mark-umbraco', file: 'themes/umbraco-mark.svg' },
     badge: { key: 'badge-umbraco-mvp', file: 'themes/umbraco-mvp.svg' },
   },
 ];

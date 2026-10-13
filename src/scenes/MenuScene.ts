@@ -28,7 +28,6 @@ export class MenuScene extends Phaser.Scene {
       this.tweens.add({ targets: h, y: 80, duration: 900 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     }
     txt(this, WIDTH / 2, 144, 'BETA BLAST', 56, theme.title);
-    this.logo(theme, 56, 150);
     txt(this, WIDTH / 2, 186, 'Shoot the holds. Send the route.', 17, '#c9d1ee', false);
     this.previewStamp(472, 114);
 
@@ -94,13 +93,6 @@ export class MenuScene extends Phaser.Scene {
     this.issuesLink(WIDTH / 2, 708);
 
     this.input.once('pointerdown', unlockAudio);
-  }
-
-  /** The theme's logo, if it has one and the file loaded, in the corner beside the title. */
-  private logo(theme: ReturnType<typeof currentTheme>, x: number, y: number): void {
-    if (!theme.logo || !this.textures.exists(theme.logo.key)) return;
-    const img = this.add.image(x, y, theme.logo.key).setTint(theme.logo.tint);
-    img.setScale(54 / Math.max(img.width, img.height));
   }
 
   /** A small "report a problem" link to the project's issues on GitHub. */

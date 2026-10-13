@@ -17,14 +17,16 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    for (const t of THEMES) for (const art of [t.logo, t.badge]) if (art) this.load.svg(art.key, art.file);
+    for (const t of THEMES) for (const art of [t.holdMark, t.badge]) if (art) this.load.svg(art.key, art.file);
   }
 
   /** The artwork that follows the theme: the route-coloured holds, the mega jug and the wall. */
   applyTheme(): void {
     const stale = [0, 1, 2, 3, 4, WILD].map((t) => `hold-${t}`).concat('wall');
     for (const key of stale) if (this.textures.exists(key)) this.textures.remove(key); // generateTexture would draw over the old one
-    holdColours().forEach((col, i) => this.makeHold(i, col));
+    const mark = currentTheme().holdMark;
+    const useMark = !!mark && this.textures.exists(mark.key);
+    holdColours().forEach((col, i) => (useMark ? this.makeMarkHold(i, col, mark.key) : this.makeHold(i, col)));
     this.makeWild();
     this.makeWall();
   }
@@ -51,6 +53,38 @@ export class BootScene extends Phaser.Scene {
     if (code && route) this.scene.start('Game', { level: routeLevel(route, code) });
     else if (join) this.scene.start('Lobby', { join });
     else this.scene.start('Menu');
+  }
+
+  /** A round hold with a white mark (a theme's logo) in it, in the route colour. */
+  private makeMarkHold(type: number, col: number, markKey: string): void {
+    const g = this.add.graphics();
+    const c = D / 2;
+    g.fillStyle(shade(col, -35)).fillCircle(c, c + 2, 22); // shadow edge, like the other holds
+    g.generateTexture(`hold-${type}`, D, D);
+    g.destroy();
+    const tex = this.textures.get(`hold-${type}`) as Phaser.Textures.CanvasTexture;
+    const ctx = (tex.getSourceImage() as HTMLCanvasElement).getContext('2d');
+    if (!ctx) return;
+    const css = `#${col.toString(16).padStart(6, '0')}`;
+    // the mark is a disc with its symbol cut out, so a white disc behind it shows the symbol in white
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(c, c, 15, 0, Math.PI * 2);
+    ctx.fill();
+    const tinted = document.createElement('canvas');
+    tinted.width = tinted.height = 42;
+    const t = tinted.getContext('2d');
+    if (!t) return;
+    t.drawImage(this.textures.get(markKey).getSourceImage() as CanvasImageSource, 0, 0, 42, 42);
+    t.globalCompositeOperation = 'source-in';
+    t.fillStyle = css;
+    t.fillRect(0, 0, 42, 42);
+    ctx.drawImage(tinted, c - 21, c - 21);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; // gloss
+    ctx.beginPath();
+    ctx.ellipse(c - 7, c - 13, 6, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    tex.refresh();
   }
 
   private makeHold(type: number, col: number): void {
