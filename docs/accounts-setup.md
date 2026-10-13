@@ -25,27 +25,31 @@ You need the address of your Worker. These steps use `https://beta-blast-api.owa
 
 ## 3. Give the Worker the secrets
 
-In the Cloudflare dashboard: **Workers & Pages → beta-blast-api → Settings → Variables and Secrets → Add.** Add these four, each with the type **Secret** (not "Text"), because a plain variable is overwritten the next time the Worker is deployed:
+**The easy way (recommended): add them to GitHub.** Go to your repository on GitHub: **Settings → Secrets and variables → Actions → New repository secret** (on the **Secrets** tab, next to your Cloudflare ones). Add the ones for the providers you set up:
 
-| Name | Value |
+| Secret name | Value |
 |---|---|
-| `GH_CLIENT_ID` | GitHub's Client ID |
-| `GH_CLIENT_SECRET` | GitHub's Client secret |
-| `GOOGLE_CLIENT_ID` | Google's Client ID |
-| `GOOGLE_CLIENT_SECRET` | Google's Client secret |
+| `OAUTH_GITHUB_CLIENT_ID` | GitHub's Client ID |
+| `OAUTH_GITHUB_CLIENT_SECRET` | GitHub's Client secret |
+| `OAUTH_GOOGLE_CLIENT_ID` | Google's Client ID |
+| `OAUTH_GOOGLE_CLIENT_SECRET` | Google's Client secret |
 
-Save and deploy. Nothing needs redeploying from GitHub. Never paste these into a chat, an issue or the repo.
+(GitHub doesn't allow names that start with `GITHUB_`, which is why they begin `OAUTH_`.) Then go to **Actions → Deploy leaderboard API → Run workflow**. The deploy gives the Worker the secrets it finds, and a provider is only switched on when both its id and its secret are present. The deploy log's "Work out which sign-in secrets to send" step says exactly what was sent (names only, never values). Use **Run workflow** again after changing a secret.
+
+**The other way: the Cloudflare dashboard.** Under **Workers & Pages → beta-blast-api → Settings → Variables and Secrets**, add `GH_CLIENT_ID`, `GH_CLIENT_SECRET`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, each with the type **Secret**, and click **Deploy**. Don't use both ways for the same provider.
+
+Never paste any of these into a chat, an issue or the repo.
 
 ## 4. Check it
 
-- Open `https://beta-blast-api.owaingdwilliams.workers.dev/auth/providers`. It should list `["github","google"]` (or whichever you set up).
+- Open `https://beta-blast-api.owaingdwilliams.workers.dev/auth/providers` (in a private window, as it's cached for a minute). It should list `["github","google"]` (or whichever you set up).
 - Open the game, tap **Sign in**, and sign in. You should come back to the game with the button showing your name or "Account".
 
 ## If something goes wrong
 
 | What you see | Likely cause |
 |---|---|
-| "Sign-in isn't available right now" | The secrets are missing, named wrongly, or were added but not deployed. Open `/auth/providers` (step 4): an empty `[]` means the Worker can't see a complete pair. Check the names are exactly `GH_CLIENT_ID` and `GH_CLIENT_SECRET` (not `GITHUB_...`, which is what GitHub's own page calls them), that you clicked **Deploy** after adding them, and that you added them to the **beta-blast-api Worker** and not to a Pages project. Then reload the game. |
+| "Sign-in isn't available right now" | The secrets are missing, named wrongly, or were added but not deployed. Open `/auth/providers` (step 4): an empty `[]` means the Worker can't see a complete pair. If you used GitHub secrets: check the four names are exactly as in step 3, that you ran **Deploy leaderboard API** afterwards, and read the deploy log's "Work out which sign-in secrets to send" step. If you used the dashboard: check the names are exactly `GH_CLIENT_ID` and `GH_CLIENT_SECRET`, that you clicked **Deploy**, and that you added them to the **beta-blast-api Worker** and not to a Pages project. Then reload the game. |
 | Back in the game with "Couldn't sign in" | The Client secret is wrong or has been regenerated. Paste the current one again. |
 | GitHub shows an error page instead of asking you to authorise | The callback address on GitHub's side doesn't match the Worker's address exactly. |
 | The provider says "redirect_uri mismatch" | The callback address in the provider's settings doesn't exactly match the Worker's address. |
