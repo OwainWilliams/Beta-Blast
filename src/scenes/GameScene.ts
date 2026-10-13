@@ -11,7 +11,8 @@ import { ChalkBag, chalkPuff } from '../chalkBag';
 import { chalkBurst, colourRing, confetti, floatText, popWord } from '../effects';
 import { Hints } from '../hints';
 import { chooseName } from '../game/account';
-import { boardFor, postScore, rememberBoard } from '../game/leaderboard';
+import { arcadeLevel, makesTable } from '../game/arcade';
+import { boardFor, fetchArcade, postScore, rememberBoard } from '../game/leaderboard';
 import { RoundResult, showLeaveQuestion, showPauseMenu, showRoundResult, showVersusResult } from '../overlays';
 import { askName, Climber, makeClimber, textureFor, txt } from '../ui';
 import { MAX_ATTACK, MAX_ROWS, Msg } from '../net/protocol';
@@ -658,7 +659,7 @@ export class GameScene extends Phaser.Scene {
     recordResult(this.level.id, this.engine.score, won);
     if (this.level.survival) recordTime(this.level.id, this.engine.elapsed);
     const records = { score: this.engine.score > previousBest, time: Math.round(this.engine.elapsed) > previousTime };
-    this.time.delayedCall(won ? 2000 : 900, () => this.showResult(won, bonus, flash, speed, records));
+    this.time.delayedCall(won ? 2000 : 900, () => (this.level.arcade ? void this.showArcadeResult(records) : this.showResult(won, bonus, flash, speed, records)));
   }
 
   /** Big "SENT!" with a flash and a shower of chalk and tape. */
@@ -674,10 +675,24 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
-    this.scene.restart(this.level.survival ? { level: survivalLevel() } : this.data0);
+    this.scene.restart(this.level.arcade ? { level: arcadeLevel() } : this.level.survival ? { level: survivalLevel() } : this.data0);
   }
 
-  private showResult(won: boolean, bonus: number, flash: boolean, speed: number, records: { score: boolean; time: boolean }): void {
+  /** Arcade: a score that makes this week's top 10 goes to the initials screen; any other gets the usual result with a note. */
+  private async showArcadeResult(records: { score: boolean; time: boolean }): Promise<void> {
+    const e = this.engine;
+    const top = await fetchArcade();
+    if (!this.sys.isActive()) return;
+    if (top && makesTable(top, e.score)) {
+      const replay: Replay = { seed: this.level.seed, shots: this.recorder.shots, tail: this.recorder.tail };
+      this.scene.start('Initials', { score: e.score, seconds: Math.max(1, Math.round(e.elapsed)), stage: e.stage(), replay });
+      return;
+    }
+    const note = !top ? "Couldn't reach the Arcade table" : e.score <= 0 ? '' : `Not in this week's top 10 (10th place: ${top[top.length - 1]?.score ?? 0})`;
+    this.showResult(false, 0, false, 0, records, note);
+  }
+
+  private showResult(won: boolean, bonus: number, flash: boolean, speed: number, records: { score: boolean; time: boolean }, note?: string): void {
     const e = this.engine;
     const id = this.level.id;
     showRoundResult(this, {
@@ -690,6 +705,7 @@ export class GameScene extends Phaser.Scene {
       speed,
       seconds: e.elapsed,
       flash,
+      note,
       survival: this.level.survival ? { seconds: e.elapsed, stage: e.stage(), bestSeconds: getBestTime(id), newBestScore: records.score, newBestTime: records.time } : undefined,
       post: this.leaderboardPost(),
       next: won && !this.level.daily && !this.level.custom ? { label: `Next: V${this.level.grade + 1}`, go: () => this.scene.restart({ level: gradeLevel(this.level.grade + 1) }) } : undefined,

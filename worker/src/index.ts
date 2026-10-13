@@ -3,6 +3,7 @@
 // Used by the game:
 //   GET  /scores?board=v3   -> { board, scores: [{ name, score, seconds, look }] } the top 10, always fresh
 //   POST /scores            -> { rank, best, score }   body: { board, name, score, seconds?, look?, replay }
+//   GET/POST /arcade        -> the weekly Arcade table of three-letter initials (see arcade.ts)
 // The body holds the score and the player's moves. The Worker checks the score is believable for those moves
 // (or, with VERIFY_REPLAYS=1, replays them and uses its own score). One row per player name per board; a new
 // score only replaces the old one if it is higher. Posting is only allowed from the game's own sites.
@@ -14,6 +15,7 @@
 //   GET  /v1/players/{name} -> a player's best score and rank on every board
 import { levelForBoard, plausible, playReplay } from '../../src/game/replay';
 import { accountRoute } from './account-routes';
+import { arcadeRoute } from './arcade';
 import { authenticate, AuthEnv, bearer } from './auth';
 import type { D1 } from './db';
 import { withinLimit } from './limits';
@@ -62,6 +64,8 @@ export default {
     try {
       const account = await accountRoute(request, url, path, env, origins, origin, reply);
       if (account) return account;
+      const arcade = await arcadeRoute(request, url, path, env, origins, reply);
+      if (arcade) return arcade;
       if (request.method === 'GET') {
         if (path === '/scores') {
           const board = url.searchParams.get('board');

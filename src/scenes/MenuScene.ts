@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { ISSUES_URL, WIDTH } from '../config';
+import { arcadeLevel } from '../game/arcade';
 import { dailyLevel, gradeLevel, LevelSpec, survivalLevel } from '../game/levels';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
 import { getBest, getBestTime, getMusic, getShake, isSent, setShake } from '../game/storage';
@@ -38,7 +39,10 @@ export class MenuScene extends Phaser.Scene {
     makeButton(this, 400, 245, 250, 52, 'Survival', () => this.play(survivalLevel()), 0xc23b5a, 22);
     const longest = getBestTime('survival');
     txt(this, 400, 281, longest ? `Best ${getBest('survival')} · longest ${formatTime(longest)}` : 'How long can you last?', 14, '#c9d1ee', false);
-    makeButton(this, WIDTH / 2, 332, 510, 46, '2 Player', () => this.scene.start('Lobby'), 0x2e8b57, 21);
+    makeButton(this, 140, 332, 250, 46, '2 Player', () => this.scene.start('Lobby'), 0x2e8b57, 21);
+    makeButton(this, 400, 332, 250, 46, 'Arcade', () => this.play(arcadeLevel()), 0xb8860b, 21);
+    txt(this, 140, 366, 'Race a friend online', 12, '#c9d1ee', false);
+    txt(this, 400, 366, 'Weekly top 10 · your initials', 12, '#c9d1ee', false);
 
     // Grades never run out, so they come in pages. Open on the page with your first unsent grade.
     if (menuPage === null) {

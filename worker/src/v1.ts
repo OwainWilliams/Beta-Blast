@@ -1,5 +1,7 @@
 // The public, read-only side of the API (version 1). Anyone may call it from anywhere, so it only ever returns
 // what the leaderboard already shows: names, scores, times and climber outfits.
+import { ARCADE, arcadeBoard, isArcadeBoard } from '../../src/game/arcade';
+import { arcadeTop } from './arcade';
 import { boardKind, boardTitle, isBoard, OVERALL } from '../../src/game/boards';
 import { colourOf, DEFAULT_LOOK, decodeLook, SLOTS } from '../../src/game/looks';
 import type { D1 } from './db';
@@ -9,6 +11,7 @@ import { BOARD_SIZE, cleanName } from './rules';
 export const ENDPOINTS = [
   'GET /v1/boards',
   'GET /v1/boards/{board}?limit=10',
+  'GET /v1/boards/arcade (this week\'s Arcade table; arcade-YYYY-MM-DD for another week)',
   'GET /v1/players/{name}',
 ];
 
@@ -42,7 +45,7 @@ export async function listBoards(db: D1, now = Date.now()) {
   // the overall ranking first, then grades in order, then survival, then the Dailies newest first
   const rank = (b: BoardInfo) => (b.kind === 'overall' ? -1 : b.kind === 'grade' ? 0 : b.kind === 'survival' ? 1 : 2);
   boards.sort((a, b) => rank(a) - rank(b) || (a.kind === 'grade' ? Number(a.id.slice(1)) - Number(b.id.slice(1)) : b.id.localeCompare(a.id)));
-  return { boards, aliases: { daily: await latestDaily(db, now) } };
+  return { boards, aliases: { daily: await latestDaily(db, now), arcade: arcadeBoard(now) } };
 }
 
 /** The Daily board people are playing now: the newest one with scores, or today's if none. */
@@ -52,6 +55,12 @@ export async function latestDaily(db: D1, now = Date.now()): Promise<string> {
 }
 
 export async function boardView(db: D1, id: string, limit: number, now = Date.now()) {
+  if (id === ARCADE || isArcadeBoard(id)) {
+    const board = id === ARCADE ? arcadeBoard(now) : id;
+    const rows = await arcadeTop(db, board.slice(7), Math.min(BOARD_SIZE, Math.max(1, limit)));
+    const blank = outfitOf('');
+    return { board, title: 'Arcade', kind: 'arcade', scores: rows.map((r, i) => ({ rank: i + 1, name: r.name, score: r.score, seconds: r.seconds, look: '', outfit: blank, verified: false })) };
+  }
   const board = id === 'daily' ? await latestDaily(db, now) : id;
   if (!isBoard(board)) return null;
   const results = await topScores(db, board, Math.min(BOARD_SIZE, Math.max(1, limit)));
