@@ -100,6 +100,8 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 
 **Accounts** (optional): tap **Sign in** on the home screen to sign in with GitHub or Google. Your best scores, grades sent, tips seen and outfit then follow you to every device, and your leaderboard name is yours: nobody else can post under it, and a ✓ marks it on the leaderboard. Playing as a guest works exactly as before, with the save kept on that device. A signed-in player can change their leaderboard name on the Account screen, and their scores and outfit move to the new name. They can also delete their account, scores and cloud save there. Sign-in is off until the OAuth apps are set up: see [docs/accounts-setup.md](docs/accounts-setup.md).
 
+**Moderation**: fake or offensive names can be renamed, removed or banned from a private admin page that sits behind Cloudflare Access (setup in [`docs/admin.md`](docs/admin.md)).
+
 **Leaderboard**: after a grade, the Daily Boulder or a Survival run, pick a name (letters and numbers, up to 12) and post the score. *Leaderboard* in the menu opens on **Overall**, a ranking of everyone by the total of their best score on every grade plus their Survival best. Each grade, each day's Daily and Survival also has its own top 10. Custom routes and two-player matches have no board. The game works fine if the API is down. Scores are checked by the API (see *Cheating* below).
 
 ## Balance

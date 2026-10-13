@@ -99,6 +99,7 @@ export default {
         const s = parseSubmission(body);
         if (typeof s === 'string') return reply({ error: s }, 400);
         if (!user && (await env.DB.prepare('SELECT 1 AS x FROM users WHERE name = ?1').bind(s.name).first())) return reply({ error: 'That name belongs to a signed-in player. Pick another, or sign in.' }, 409);
+        if (await env.DB.prepare('SELECT 1 AS x FROM banned_names WHERE name = ?1').bind(s.name).first()) return reply({ error: 'That name is not available. Pick another.' }, 403);
         const level = levelForBoard(s.board, s.replay);
         if (!level) return reply({ error: 'That board is not open for scores' }, 400);
         let score = s.score;

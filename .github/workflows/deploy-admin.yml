@@ -1,0 +1,49 @@
+name: Deploy admin area
+
+# Publishes the admin Worker in admin/ when it (or what it shares with the game's API) changes on main.
+# Needs the repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID, as for the leaderboard API.
+# Once Cloudflare Access is set up (docs/admin.md), also add the repository secrets ADMIN_ACCESS_TEAM_DOMAIN and
+# ADMIN_ACCESS_AUD. Until they are there the admin Worker refuses every request, which is the safe default.
+on:
+  push:
+    branches: [main]
+    paths: ['admin/**', 'worker/**', 'src/game/**', '.github/workflows/deploy-admin.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-admin
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      ACCESS_TEAM_DOMAIN: ${{ secrets.ADMIN_ACCESS_TEAM_DOMAIN }}
+      ACCESS_AUD: ${{ secrets.ADMIN_ACCESS_AUD }}
+    steps:
+      - uses: actions/checkout@v4
+      # Only send the Access settings when both are present, so a deploy never wipes ones set in the dashboard.
+      - name: Work out which Access settings to send
+        id: access
+        run: |
+          names=""
+          [ -n "$ACCESS_TEAM_DOMAIN" ] && [ -n "$ACCESS_AUD" ] && names="ACCESS_TEAM_DOMAIN ACCESS_AUD"
+          {
+            echo 'names<<EOF'
+            for n in $names; do echo "$n"; done
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+          echo "Sending to the Worker:${names:- nothing}"
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          secrets: ${{ steps.access.outputs.names }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: admin
+          wranglerVersion: '4'
+          # the moderation tables live in the game's schema (safe to run again)
+          preCommands: npx wrangler d1 execute DB --remote --file=../worker/schema.sql
+          command: deploy

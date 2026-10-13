@@ -455,3 +455,39 @@ describe('deleting an account', () => {
     expect((await setName(again, 'Ann')).status).toBe(200); // the name is free
   });
 });
+
+describe('names and accounts an admin has banned', () => {
+  const asAdmin = (fn: (m: typeof import('../worker/src/moderation')) => Promise<unknown>) => import('../worker/src/moderation').then(fn);
+
+  it('cannot sign in again once the account is banned, and its sessions are gone', async () => {
+    const token = await signIn();
+    await setName(token, 'Fakey');
+    await asAdmin((m) => m.removeAccount(env.DB, 'admin@example.com', 'Fakey', { ban: true, reason: 'offensive' }));
+    expect((await call('GET', '/me', { token })).status).toBe(401);
+    const back = await callback('github', { code: 'gh-good', state: stateOf(await start('github')) });
+    expect(back.headers.get('Location')).toBe(`${RETURN}#login_error=banned`);
+    expect(await rows('SELECT 1 FROM users')).toHaveLength(0);
+    // somebody else can still sign in
+    expect(await signIn('github', 'gh-other')).toBeTruthy();
+  });
+
+  it('is only banned if asked to: deleting an account alone lets the person come back', async () => {
+    const token = await signIn();
+    await setName(token, 'Fakey');
+    await asAdmin((m) => m.removeAccount(env.DB, 'admin@example.com', 'Fakey'));
+    expect(await signIn()).toBeTruthy();
+  });
+
+  it('refuses a banned name when choosing a name and when posting a score', async () => {
+    await asAdmin((m) => m.removePlayer(env.DB, 'admin@example.com', 'Rude Name', { ban: true }));
+    const token = await signIn();
+    expect((await setName(token, 'rude name')).status).toBe(400); // any capitals
+    expect((await setName(token, 'Polite')).status).toBe(200);
+    const level = gradeLevel(3);
+    let played = playBot(level, 1);
+    for (let s = 2; !(played.ended && played.score > 0); s++) played = playBot(level, s);
+    const res = await call('POST', '/scores', { body: { board: 'v3', name: 'RUDE NAME', score: played.score, replay: played.replay } });
+    expect(res.status).toBe(403);
+    expect((await json(await call('GET', '/scores?board=v3', { origin: null }))).scores).toEqual([]);
+  });
+});
