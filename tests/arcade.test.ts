@@ -151,8 +151,8 @@ describe('the table itself', () => {
     const top = await arcadeTop(db, '2026-10-12');
     expect(top).toHaveLength(10);
     expect(top[0].name).toBe('TOP');
-    expect(top.at(-1)?.score).toBe(200); // the old tenth (100) was pushed off
-    const count = await db.prepare('SELECT COUNT(*) AS n FROM arcade_scores').first<{ n: number }>();
+    expect(top[top.length - 1].score).toBe(200); // the old tenth (100) was pushed off
+    const count = (await db.prepare('SELECT COUNT(*) AS n FROM arcade_scores').first()) as { n: number } | null;
     expect(count?.n).toBe(10); // nothing extra is kept
   });
 
