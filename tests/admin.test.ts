@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import admin from '../admin/src/index';
-import { forgetKeys, verifyAccess } from '../admin/src/access';
+import { forgetKeys, teamDomain, verifyAccess } from '../admin/src/access';
 import { addArcadeRun } from '../worker/src/arcade';
 import { listAudit, listBans, listPlayers, removeAccount, removeArcadeRun, removePlayer, renamePlayer, undo, unban } from '../worker/src/moderation';
 import { fakeD1 } from './fakeD1';
@@ -59,6 +59,18 @@ describe('checking the Cloudflare Access token', () => {
     for (const e of [env({ ACCESS_AUD: undefined }), env({ ACCESS_TEAM_DOMAIN: undefined }), env({ ACCESS_TEAM_DOMAIN: 'evil.example.com' }), env({ ACCESS_TEAM_DOMAIN: '' })])
       expect(await verifyAccess(req({ 'Cf-Access-Jwt-Assertion': t }), e, NOW)).toMatchObject({ status: 503 });
     expect(fetches).toBe(0); // it never fetches keys from an address it was not told to trust
+  });
+  it('says which setting is wrong, so it can be fixed', async () => {
+    const t = { 'Cf-Access-Jwt-Assertion': await token() };
+    expect(await verifyAccess(req(t), env({ ACCESS_TEAM_DOMAIN: undefined }), NOW)).toMatchObject({ status: 503, error: expect.stringContaining('ACCESS_TEAM_DOMAIN is missing') });
+    expect(await verifyAccess(req(t), env({ ACCESS_TEAM_DOMAIN: 'my team.example.org' }), NOW)).toMatchObject({ status: 503, error: expect.stringContaining('myteam.cloudflareaccess.com') });
+    expect(await verifyAccess(req(t), env({ ACCESS_AUD: ' ' }), NOW)).toMatchObject({ status: 503, error: expect.stringContaining('ACCESS_AUD is missing') });
+  });
+  it('is forgiving about how the team domain was typed', async () => {
+    for (const typed of ['myteam', 'MyTeam.CloudflareAccess.com', ' https://myteam.cloudflareaccess.com/ ', 'https://myteam.cloudflareaccess.com/cdn-cgi/access/certs', 'myteam.cloudflareaccess.com:443'])
+      expect(teamDomain(typed)).toBe(TEAM);
+    expect(await verifyAccess(req({ 'Cf-Access-Jwt-Assertion': await token() }), env({ ACCESS_TEAM_DOMAIN: 'MyTeam' }), NOW)).toEqual({ email: 'me@example.com' });
+    for (const bad of [undefined, '', '   ', 'evil.example.com', 'myteam.cloudflareaccess.com.evil.com', 'my team', 'a.b.cloudflareaccess.com', '-x.cloudflareaccess.com']) expect(teamDomain(bad)).toBeNull();
   });
   it('refuses a request with no token, a mangled one, or one signed with another key', async () => {
     expect(await verifyAccess(req(), env(), NOW)).toMatchObject({ status: 401 });

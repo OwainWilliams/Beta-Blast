@@ -147,7 +147,7 @@ The leaderboard is a small [Cloudflare Worker](https://developers.cloudflare.com
 
 ### Public read API
 
-Anyone can read the leaderboard from any website or script. Replace the address below with the Worker's own (the default is in `src/apiUrl.ts`). Answers are JSON, open to every origin, and cached for 30 seconds. Posting scores stays limited to the game's own sites.
+Anyone can read the leaderboard from any website or script. Replace the address below with the Worker's own (the default is in `src/apiUrl.ts`). Answers are JSON, open to every origin, and cacheable for 30 seconds (Cloudflare's edge cache only does that on a custom domain or route, not on a `workers.dev` address). The **Overall** ranking, which adds up every score, is also remembered for a minute inside the Worker itself, so it can be up to a minute behind however it is reached. Posting scores stays limited to the game's own sites.
 
 | Endpoint | Returns |
 |---|---|

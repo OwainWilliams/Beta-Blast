@@ -38,15 +38,28 @@ async function keysFor(team: string, now: number): Promise<Jwk[]> {
   return cache.keys;
 }
 
+/**
+ * The team domain as it was typed into the setting, tidied: "MyTeam", "myteam.cloudflareaccess.com",
+ * "https://myteam.cloudflareaccess.com/" and "https://myteam.cloudflareaccess.com/cdn-cgi/..." all mean the same team.
+ * Null if it doesn't end up as a Cloudflare Access address.
+ */
+export function teamDomain(raw: string | undefined): string | null {
+  const host = (raw ?? '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').split(/[/?#]/)[0].replace(/:\d+$/, '');
+  const full = host && !host.includes('.') ? `${host}.cloudflareaccess.com` : host;
+  return TEAM.test(full) ? full : null;
+}
+
 export interface Admin {
   email: string;
 }
 
 /** The signed-in admin behind a request, or why not. */
 export async function verifyAccess(request: Request, env: AccessEnv, now = Date.now()): Promise<Admin | { error: string; status: number }> {
-  const team = env.ACCESS_TEAM_DOMAIN?.trim().toLowerCase().replace(/^https:\/\//, '').replace(/\/+$/, '');
+  const team = teamDomain(env.ACCESS_TEAM_DOMAIN);
   const aud = env.ACCESS_AUD?.trim();
-  if (!team || !aud || !TEAM.test(team)) return { error: 'The admin area is not set up yet (see docs/admin.md)', status: 503 };
+  if (!env.ACCESS_TEAM_DOMAIN?.trim()) return { error: 'Not set up yet: ACCESS_TEAM_DOMAIN is missing (see docs/admin.md)', status: 503 };
+  if (!team) return { error: 'Not set up yet: ACCESS_TEAM_DOMAIN should look like myteam.cloudflareaccess.com (see docs/admin.md)', status: 503 };
+  if (!aud) return { error: 'Not set up yet: ACCESS_AUD is missing (see docs/admin.md)', status: 503 };
   const token = request.headers.get('Cf-Access-Jwt-Assertion');
   const parts = token?.split('.') ?? [];
   if (parts.length !== 3) return { error: 'Sign in through Cloudflare Access', status: 401 };

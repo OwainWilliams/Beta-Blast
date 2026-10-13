@@ -15,8 +15,14 @@ const json = async (res: Response) => (await res.json()) as Record<string, any>;
 
 beforeEach(() => {
   env = { DB: fakeD1() };
+  vi.useFakeTimers({ toFake: ['Date'] });
 });
-afterEach(() => vi.unstubAllGlobals());
+/** Move on past the minute the Overall ranking is remembered for. */
+const later = () => vi.setSystemTime(Date.now() + 61_000);
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 describe('the public read API', () => {
   it('describes itself', async () => {
@@ -209,11 +215,13 @@ describe('the overall board', () => {
   it('is what the game\'s own call returns too, and is empty before anyone has played', async () => {
     expect((await json(await get('/scores?board=overall'))).scores).toEqual([]);
     await add('v0', 'Ann', 100);
+    later(); // the ranking is remembered for a minute
     expect((await json(await get('/scores?board=overall'))).scores).toEqual([{ name: 'Ann', score: 100, seconds: 0, look: '', verified: false }]);
   });
 
   it('is listed first, once someone has played, and is not a board anyone can post to', async () => {
     expect((await json(await get('/v1/boards'))).boards).toEqual([]);
+    later();
     await add('v1', 'Ann', 100);
     await add('v0', 'Bob', 50);
     const boards = (await json(await get('/v1/boards'))).boards;
