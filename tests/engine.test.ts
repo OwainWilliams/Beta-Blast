@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Engine } from '../src/game/engine';
 import { BOMB, SLICK, VOLUME, WILD } from '../src/game/grid';
-import { gradeLevel, LevelSpec, survivalLevel, versusLevel } from '../src/game/levels';
+import { gradeLevel, LevelSpec, speedBonus, speedBonusMax, survivalLevel, versusLevel } from '../src/game/levels';
 import { VERSUS_RULES } from '../src/game/versus';
 import { emptyLayout } from '../src/game/routes';
 
@@ -137,7 +137,7 @@ describe('shots', () => {
     expect(res.won).toBe(true);
     expect(res.leftover).toHaveLength(1);
     expect(e.grid.count()).toBe(0);
-    expect(e.finishWin()).toEqual({ bonus: 100 + 500, flash: true });
+    expect(e.finishWin()).toEqual({ bonus: 100 + 500, flash: true, speed: speedBonusMax(0) }); // sent in no time at all
   });
 
   it('loses when the wall reaches the red line', () => {
@@ -562,5 +562,77 @@ describe('versus', () => {
     const snap = duel(3).snapshot();
     expect(snap.length).toBeGreaterThanOrEqual(5);
     for (const row of snap) expect(row).toMatch(/^[0-467.]{9,10}$/);
+  });
+});
+
+describe('the speed bonus', () => {
+  /** A one-shot route: pop the pair, and send it after `seconds` of aiming. */
+  const sendAfter = (seconds: number, extra: Partial<LevelSpec> = {}) => {
+    const e = custom((l) => {
+      l[0][0] = 1;
+      l[0][1] = 1;
+    }, extra);
+    e.tick(seconds);
+    const res = shootAt(e, 1, 0, 0);
+    expect(res.won).toBe(true);
+    return { e, ...e.finishWin() };
+  };
+
+  it('pays more the faster the route is sent, whatever else happens', () => {
+    const fast = sendAfter(10);
+    const medium = sendAfter(40);
+    const slow = sendAfter(80);
+    expect(fast.speed).toBeGreaterThan(medium.speed);
+    expect(medium.speed).toBeGreaterThan(slow.speed);
+    expect(fast.e.score).toBeGreaterThan(medium.e.score);
+    expect(medium.e.score).toBeGreaterThan(slow.e.score);
+  });
+
+  it('adds the bonus to the score, on top of the route bonus', () => {
+    const r = sendAfter(30);
+    expect(r.speed).toBe(speedBonus(0, 30));
+    expect(r.e.score).toBeGreaterThan(r.bonus + r.speed - 1); // pops, drops, the route bonus and the speed bonus
+  });
+
+  it('is nothing for a slow send, never negative', () => {
+    expect(sendAfter(10_000).speed).toBe(0);
+  });
+
+  it('counts time even where no rows drop (a route with the timer off)', () => {
+    const e = custom((l) => (l[0][0] = 1), { dropInterval: 0 });
+    e.tick(25);
+    expect(e.elapsed).toBe(25);
+    expect(e.speedBonusNow()).toBe(speedBonus(0, 25));
+    expect(e.tick(1)).toBeNull(); // and still drops nothing
+  });
+
+  it('stops counting once the wall is cleared', () => {
+    const e = custom((l) => {
+      l[0][0] = 1;
+      l[0][1] = 1;
+    });
+    e.tick(5);
+    shootAt(e, 1, 0, 0);
+    e.tick(100);
+    expect(e.elapsed).toBe(5);
+  });
+
+  it('pays a hand-built route in proportion to its size', () => {
+    const tiny = custom((l) => (l[0][0] = 1), { custom: true });
+    const big = custom((l) => {
+      for (let r = 0; r < 6; r++) for (let c = 0; c < (r % 2 ? 9 : 10); c++) l[r][c] = 1; // 57 holds
+    }, { custom: true });
+    expect(tiny.speedBonusNow()).toBeLessThan(speedBonus(0, 0) / 20);
+    expect(big.speedBonusNow()).toBeGreaterThan(speedBonus(0, 0) * 0.9);
+    const full = custom((l) => {
+      for (let r = 0; r < 7; r++) for (let c = 0; c < (r % 2 ? 9 : 10); c++) l[r][c] = 1; // 67 holds: a whole wall
+    }, { custom: true });
+    expect(full.speedBonusNow()).toBe(speedBonus(0, 0));
+    expect(custom((l) => (l[0][0] = 1)).speedBonusNow()).toBe(speedBonus(0, 0)); // a normal level is never scaled
+  });
+
+  it('has no speed bonus in Survival or two-player matches', () => {
+    expect(new Engine(survivalLevel(1)).speedBonusNow()).toBe(0);
+    expect(new Engine(versusLevel(1)).speedBonusNow()).toBe(0);
   });
 });
