@@ -13,6 +13,8 @@ export interface Theme {
   gradeSent: number;
   /** A logo file under public/, drawn in white and tinted with `tint`. Optional. */
   logo?: { key: string; file: string; tint: number };
+  /** A full-colour emblem (an SVG with its own colours, drawn as it is), shown when a route is sent. */
+  badge?: { key: string; file: string };
 }
 
 export const THEMES: Theme[] = [
@@ -35,6 +37,7 @@ export const THEMES: Theme[] = [
     grade: 0x3544b1,
     gradeSent: 0x2fa89a,
     logo: { key: 'logo-umbraco', file: 'themes/umbraco-logo.svg', tint: 0xf5c1bc },
+    badge: { key: 'badge-umbraco-mvp', file: 'themes/umbraco-mvp.svg' },
   },
 ];
 

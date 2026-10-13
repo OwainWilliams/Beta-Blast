@@ -3,6 +3,7 @@
 import Phaser from 'phaser';
 import { WIDTH } from './config';
 import { formatTime } from './game/format';
+import { currentTheme } from './game/themes';
 import { makeButton, makeToggle, txt } from './ui';
 
 type Container = Phaser.GameObjects.Container;
@@ -36,6 +37,11 @@ export interface RoundResult {
 /** Sent or fell, in a single-player round or a survival run. */
 export function showRoundResult(scene: Phaser.Scene, r: RoundResult): Container {
   const c = curtain(scene, 100, 0.7);
+  const badge = r.won ? currentTheme().badge : undefined;
+  if (badge && scene.textures.exists(badge.key)) {
+    const img = scene.add.image(WIDTH / 2, 98, badge.key);
+    c.add(img.setScale(70 / img.height));
+  }
   c.add(txt(scene, WIDTH / 2, 170, r.won ? 'SENT!' : 'FELL!', 64, r.won ? '#ffd166' : '#ff8a8a'));
   if (r.survival) {
     const s = r.survival;

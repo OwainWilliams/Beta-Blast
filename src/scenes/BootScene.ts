@@ -17,7 +17,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    for (const t of THEMES) if (t.logo) this.load.svg(t.logo.key, t.logo.file);
+    for (const t of THEMES) for (const art of [t.logo, t.badge]) if (art) this.load.svg(art.key, art.file);
   }
 
   /** The artwork that follows the theme: the route-coloured holds, the mega jug and the wall. */
