@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { BOMB, D, SLICK, VOLUME, WILD } from '../game/grid';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
 import { codeFromInput as joinCodeFromInput } from '../net/codes';
-import { HOLD_COLOURS, WIDTH, HEIGHT, GRID_X } from '../config';
+import { holdColours, WIDTH, HEIGHT, GRID_X } from '../config';
+import { currentTheme, THEMES } from '../game/themes';
 
 const shade = (c: number, amt: number) =>
   amt >= 0
@@ -15,14 +16,27 @@ export class BootScene extends Phaser.Scene {
     super('Boot');
   }
 
-  create(): void {
-    HOLD_COLOURS.forEach((col, i) => this.makeHold(i, col));
-    this.makeBomb();
+  preload(): void {
+    for (const t of THEMES) for (const art of [t.holdMark, t.badge]) if (art) this.load.svg(art.key, art.file);
+  }
+
+  /** The artwork that follows the theme: the route-coloured holds, the mega jug and the wall. */
+  applyTheme(): void {
+    const stale = [0, 1, 2, 3, 4, WILD].map((t) => `hold-${t}`).concat('wall');
+    for (const key of stale) if (this.textures.exists(key)) this.textures.remove(key); // generateTexture would draw over the old one
+    const mark = currentTheme().holdMark;
+    const useMark = !!mark && this.textures.exists(mark.key);
+    holdColours().forEach((col, i) => (useMark ? this.makeMarkHold(i, col, mark.key) : this.makeHold(i, col)));
     this.makeWild();
+    this.makeWall();
+  }
+
+  create(): void {
+    this.applyTheme();
+    this.makeBomb();
     this.makeVolume(false);
     this.makeVolume(true);
     this.makeSlick();
-    this.makeWall();
     const g = this.add.graphics();
     g.fillStyle(0xffffff, 1).fillCircle(4, 4, 4);
     g.generateTexture('chalk', 8, 8);
@@ -39,6 +53,38 @@ export class BootScene extends Phaser.Scene {
     if (code && route) this.scene.start('Game', { level: routeLevel(route, code) });
     else if (join) this.scene.start('Lobby', { join });
     else this.scene.start('Menu');
+  }
+
+  /** A round hold with a white mark (a theme's logo) in it, in the route colour. */
+  private makeMarkHold(type: number, col: number, markKey: string): void {
+    const g = this.add.graphics();
+    const c = D / 2;
+    g.fillStyle(shade(col, -35)).fillCircle(c, c + 2, 22); // shadow edge, like the other holds
+    g.generateTexture(`hold-${type}`, D, D);
+    g.destroy();
+    const tex = this.textures.get(`hold-${type}`) as Phaser.Textures.CanvasTexture;
+    const ctx = (tex.getSourceImage() as HTMLCanvasElement).getContext('2d');
+    if (!ctx) return;
+    const css = `#${col.toString(16).padStart(6, '0')}`;
+    // the mark is a disc with its symbol cut out, so a white disc behind it shows the symbol in white
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(c, c, 15, 0, Math.PI * 2);
+    ctx.fill();
+    const tinted = document.createElement('canvas');
+    tinted.width = tinted.height = 42;
+    const t = tinted.getContext('2d');
+    if (!t) return;
+    t.drawImage(this.textures.get(markKey).getSourceImage() as CanvasImageSource, 0, 0, 42, 42);
+    t.globalCompositeOperation = 'source-in';
+    t.fillStyle = css;
+    t.fillRect(0, 0, 42, 42);
+    ctx.drawImage(tinted, c - 21, c - 21);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; // gloss
+    ctx.beginPath();
+    ctx.ellipse(c - 7, c - 13, 6, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    tex.refresh();
   }
 
   private makeHold(type: number, col: number): void {
@@ -102,7 +148,7 @@ export class BootScene extends Phaser.Scene {
     const g = this.add.graphics();
     const c = D / 2;
     g.fillStyle(0x20242f).fillCircle(c, c + 2, 22);
-    HOLD_COLOURS.forEach((col, i) => {
+    holdColours().forEach((col, i) => {
       g.fillStyle(col);
       g.slice(c, c, 21, Phaser.Math.DegToRad(-90 + i * 72), Phaser.Math.DegToRad(-90 + (i + 1) * 72), false);
       g.fillPath();
@@ -147,19 +193,20 @@ export class BootScene extends Phaser.Scene {
 
   private makeWall(): void {
     const g = this.add.graphics();
-    g.fillStyle(0x1d2230).fillRect(0, 0, WIDTH, HEIGHT);
-    g.fillStyle(0x262c3d).fillRect(GRID_X, 0, WIDTH - GRID_X * 2, 600);
+    const t = currentTheme().wall;
+    g.fillStyle(t.bg).fillRect(0, 0, WIDTH, HEIGHT);
+    g.fillStyle(t.panel).fillRect(GRID_X, 0, WIDTH - GRID_X * 2, 600);
     // panel seams
-    g.lineStyle(2, 0x151925, 1);
+    g.lineStyle(2, t.seam, 1);
     for (let x = GRID_X; x <= WIDTH - GRID_X; x += 240) g.lineBetween(x, 0, x, 600);
     for (let y = 0; y <= 600; y += 240) g.lineBetween(GRID_X, y, WIDTH - GRID_X, y);
     // T-nut holes
-    g.fillStyle(0x161a26, 1);
+    g.fillStyle(t.hole, 1);
     for (let y = 24; y < 600; y += 48) for (let x = GRID_X + 24; x < WIDTH - GRID_X; x += 48) g.fillCircle(x, y, 2.5);
     // crash pad
-    g.fillStyle(0x3a4160).fillRect(0, 600, WIDTH, HEIGHT - 600);
-    g.fillStyle(0x4b5480).fillRect(0, 600, WIDTH, 6);
-    g.lineStyle(2, 0x2c3250, 1);
+    g.fillStyle(t.pad).fillRect(0, 600, WIDTH, HEIGHT - 600);
+    g.fillStyle(t.padEdge).fillRect(0, 600, WIDTH, 6);
+    g.lineStyle(2, t.padLine, 1);
     for (let x = 0; x <= WIDTH; x += 90) g.lineBetween(x, 606, x, HEIGHT);
     g.generateTexture('wall', WIDTH, HEIGHT);
     g.destroy();

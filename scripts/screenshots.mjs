@@ -222,6 +222,32 @@ try {
   await sleep(900);
   await shot(C, 'account');
   await C.evaluate(() => localStorage.removeItem('beta-blast.auth'));
+
+  // 9. the Umbraco theme: pick it on the Customise screen, then look at the menu and a wall
+  await inPage(C, `game.scene.getScene('Account').scene.start('Customise');`);
+  await sleep(600);
+  await C.mouse.click(270, 612); // the Theme button
+  await sleep(600);
+  await shot(C, 'theme-customise');
+  await inPage(C, `game.scene.getScene('Customise').scene.start('Menu');`);
+  await sleep(1200);
+  await shot(C, 'theme-menu');
+  await startGame(C, `m.levels.gradeLevel(5)`);
+  await sleep(800);
+  await shot(C, 'theme-game');
+  await inPage(C, `game.scene.getScene('Game').scene.start('Menu');`);
+  await sleep(800);
+  const tinyT = await inPage(
+    C,
+    `const l = m.routes.emptyLayout(); l[0][0] = 1; l[0][1] = 1; l[0][9] = 6;
+     const route = { layout: l, shotsPerDrop: 6, bombs: false, wilds: false, timer: 0 };
+     const code = m.routes.encodeRoute(route); return JSON.stringify(m.routes.routeLevel(route, code));`,
+  );
+  await startGame(C, tinyT);
+  await inPage(C, `const s = game.scene.getScene('Game'); s.aim = Math.atan2(150 - 270, 640 - 30);`);
+  await C.keyboard.press('Space');
+  await sleep(3200);
+  await shot(C, 'theme-sent');
 } finally {
   await browser.close();
   server.kill();
