@@ -10,6 +10,7 @@
 // ("challenge") when it starts, and must show the secret again to swap the code for a token.
 import { cleanSave, CloudSave, EMPTY_SAVE, MAX_SAVE_BYTES, mergeSaves } from '../../src/game/saveMerge';
 import type { D1 } from './db';
+import { forget } from './memo';
 import { cleanName } from './rules';
 
 export type Provider = 'github' | 'google';
@@ -223,6 +224,7 @@ export async function setName(db: D1, user: User, raw: unknown): Promise<{ name:
   if (taken) return { error: 'That name is taken', status: 409 };
   if (await db.prepare('SELECT 1 AS x FROM banned_names WHERE name = ?1').bind(name).first()) return { error: 'That name is not allowed. Use 1 to 12 letters, numbers, spaces, . _ -', status: 400 };
   if (user.name) await moveName(db, user.name, name);
+  forget(db);
   await db.prepare('UPDATE users SET name = ?1 WHERE id = ?2').bind(name, user.id).run();
   return { name };
 }
@@ -250,6 +252,7 @@ export async function putSave(db: D1, user: User, incoming: unknown, now = Date.
 
 /** Erase the account, its scores and everything else held about it. The name is free again. */
 export async function deleteAccount(db: D1, user: User): Promise<void> {
+  forget(db);
   if (user.name) {
     await db.prepare('DELETE FROM scores WHERE name = ?1').bind(user.name).run();
     await db.prepare('DELETE FROM players WHERE name = ?1').bind(user.name).run();

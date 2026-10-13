@@ -21,6 +21,7 @@ import type { D1 } from './db';
 import { withinLimit } from './limits';
 import { allowedOrigin, BOARD_SIZE, isBoard, parseSubmission, POSTS_PER_MINUTE } from './rules';
 import { topScores } from './leaders';
+import { forget } from './memo';
 import { boardView, ENDPOINTS, listBoards, playerView } from './v1';
 
 interface Env extends AuthEnv {
@@ -126,6 +127,7 @@ export default {
           await env.DB.prepare('INSERT INTO players (name, look, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT (name) DO UPDATE SET look = excluded.look, updated_at = excluded.updated_at')
             .bind(s.name, s.look, Date.now())
             .run();
+        forget(env.DB); // the Overall ranking has changed
         const row = await env.DB.prepare('SELECT score FROM scores WHERE board = ?1 AND name = ?2').bind(s.board, s.name).first<{ score: number }>();
         const best = row?.score ?? score;
         const ahead = await env.DB.prepare('SELECT COUNT(*) AS n FROM scores WHERE board = ?1 AND score > ?2').bind(s.board, best).first<{ n: number }>();
@@ -159,7 +161,7 @@ async function v1(path: string, url: URL, db: D1, reply: Reply): Promise<Respons
   return reply({ error: 'Not found' }, 404);
 }
 
-/** Serve a GET from Cloudflare's edge cache when there, otherwise make it and keep it for next time. */
+/** Serve a GET from Cloudflare's edge cache when there, otherwise make it and keep it for next time. (The edge cache does nothing on *.workers.dev addresses, only on a custom domain or route. The Overall ranking has its own cache in memo.ts.) */
 async function cached(request: Request, ctx: Ctx | undefined, make: () => Promise<Response>): Promise<Response> {
   const cache = (globalThis as { caches?: { default?: EdgeCache } }).caches?.default;
   if (!cache) return make();

@@ -34,6 +34,6 @@ The message names the setting: `ACCESS_TEAM_DOMAIN` missing or not like `myteam.
 
 ## Good to know
 
-- The public leaderboard and embed cache for 30 seconds, so a removal can take that long to disappear there.
+- The Overall ranking is remembered for up to a minute inside the game's API (and the public API may also cache for 30 seconds on a custom domain), so a removal can take a minute or so to disappear from it. Other boards show a removal straight away.
 - The game checks banned names when someone posts a score or chooses an account name, and when a banned account tries to sign in.
 - Fixing a name by hand (without the page) is possible with `npx wrangler d1 execute DB --remote --command "..."` from `worker/`, but then nothing is logged.
