@@ -192,7 +192,7 @@ try {
   await C.route('**/*workers.dev/**', (r) => {
     const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type' };
     if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
-    const board = new URL(r.request().url()).searchParams.get('board') ?? 'v3';
+    const board = new globalThis.URL(r.request().url()).searchParams.get('board') ?? 'v3'; // (URL is the dev server's address in this script)
     const totals = board === 'overall'; // the overall board adds up each player's best scores, so its numbers are bigger
     const scores = [
       { name: 'Ann', score: 9100, look: '742', verified: true },

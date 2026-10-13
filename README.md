@@ -24,6 +24,7 @@ Built with TypeScript, [Phaser 3](https://phaser.io) and Vite. All art and sound
   <tr>
     <td align="center"><img src="docs/screenshots/customise.png" width="240" alt="Choosing the climber's beanie, shirt and chalk bag"><br><sub>Customise</sub></td>
     <td align="center"><img src="docs/screenshots/leaderboard.png" width="240" alt="A leaderboard with each player's climber next to their score"><br><sub>Leaderboard</sub></td>
+    <td align="center"><img src="docs/screenshots/account.png" width="240" alt="The signed-in account screen with change name, sync and sign out"><br><sub>Account</sub></td>
   </tr>
 </table>
 
