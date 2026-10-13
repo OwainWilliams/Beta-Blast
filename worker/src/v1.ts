@@ -1,8 +1,9 @@
 // The public, read-only side of the API (version 1). Anyone may call it from anywhere, so it only ever returns
 // what the leaderboard already shows: names, scores, times and climber outfits.
-import { boardKind, boardTitle, isBoard } from '../../src/game/boards';
+import { boardKind, boardTitle, isBoard, OVERALL } from '../../src/game/boards';
 import { colourOf, DEFAULT_LOOK, decodeLook, SLOTS } from '../../src/game/looks';
 import type { D1 } from './db';
+import { overallSummary, topScores } from './leaders';
 import { BOARD_SIZE, cleanName } from './rules';
 
 export const ENDPOINTS = [
@@ -36,8 +37,10 @@ export async function listBoards(db: D1, now = Date.now()) {
     .all<{ board: string; entries: number; top: number }>();
   const today = utcDay(now);
   const boards: BoardInfo[] = results.map((r) => ({ id: r.board, title: boardTitle(r.board, today), kind: boardKind(r.board), entries: r.entries, topScore: r.top }));
-  // grades in order, then survival, then the Dailies newest first
-  const rank = (b: BoardInfo) => (b.kind === 'grade' ? 0 : b.kind === 'survival' ? 1 : 2);
+  const overall = await overallSummary(db);
+  if (overall.entries) boards.push({ id: OVERALL, title: boardTitle(OVERALL), kind: 'overall', entries: overall.entries, topScore: overall.top });
+  // the overall ranking first, then grades in order, then survival, then the Dailies newest first
+  const rank = (b: BoardInfo) => (b.kind === 'overall' ? -1 : b.kind === 'grade' ? 0 : b.kind === 'survival' ? 1 : 2);
   boards.sort((a, b) => rank(a) - rank(b) || (a.kind === 'grade' ? Number(a.id.slice(1)) - Number(b.id.slice(1)) : b.id.localeCompare(a.id)));
   return { boards, aliases: { daily: await latestDaily(db, now) } };
 }
@@ -51,19 +54,12 @@ export async function latestDaily(db: D1, now = Date.now()): Promise<string> {
 export async function boardView(db: D1, id: string, limit: number, now = Date.now()) {
   const board = id === 'daily' ? await latestDaily(db, now) : id;
   if (!isBoard(board)) return null;
-  const { results } = await db
-    .prepare(
-      `SELECT s.name AS name, s.score AS score, s.seconds AS seconds, COALESCE(p.look, '') AS look, u.id IS NOT NULL AS verified
-       FROM scores s LEFT JOIN players p ON p.name = s.name LEFT JOIN users u ON u.name = s.name
-       WHERE s.board = ?1 ORDER BY s.score DESC, s.created_at ASC LIMIT ?2`,
-    )
-    .bind(board, Math.min(BOARD_SIZE, Math.max(1, limit)))
-    .all<{ name: string; score: number; seconds: number; look: string; verified: number }>();
+  const results = await topScores(db, board, Math.min(BOARD_SIZE, Math.max(1, limit)));
   return {
     board,
     title: boardTitle(board, utcDay(now)),
     kind: boardKind(board),
-    scores: results.map((r, i) => ({ rank: i + 1, name: r.name, score: r.score, seconds: r.seconds, look: r.look, outfit: outfitOf(r.look), verified: !!r.verified })),
+    scores: results.map((r, i) => ({ rank: i + 1, name: r.name, score: r.score, seconds: r.seconds, look: r.look, outfit: outfitOf(r.look), verified: r.verified })),
   };
 }
 

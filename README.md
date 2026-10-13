@@ -92,9 +92,9 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 
 **Customise**: pick your climber's beanie, shirt and chalk bag (*Customise* in the menu). Each colour is unlocked by playing: sending grades, sending Daily Boulders, lasting in Survival, or a big score. Locked ones show how to earn them. Your climber appears next to your name on the leaderboard.
 
-**Accounts** (optional): tap **Sign in** on the home screen to sign in with GitHub or Google. Your best scores, grades sent, tips seen and outfit then follow you to every device, and your leaderboard name is yours: nobody else can post under it, and a ✓ marks it on the leaderboard. Playing as a guest works exactly as before, with the save kept on that device. Players can delete their account, scores and cloud save from the Account screen. Sign-in is off until the OAuth apps are set up: see [docs/accounts-setup.md](docs/accounts-setup.md).
+**Accounts** (optional): tap **Sign in** on the home screen to sign in with GitHub or Google. Your best scores, grades sent, tips seen and outfit then follow you to every device, and your leaderboard name is yours: nobody else can post under it, and a ✓ marks it on the leaderboard. Playing as a guest works exactly as before, with the save kept on that device. A signed-in player can change their leaderboard name on the Account screen, and their scores and outfit move to the new name. They can also delete their account, scores and cloud save there. Sign-in is off until the OAuth apps are set up: see [docs/accounts-setup.md](docs/accounts-setup.md).
 
-**Leaderboard**: after a grade, the Daily Boulder or a Survival run, pick a name (letters and numbers, up to 12) and post the score. Each grade, each day's Daily and Survival has its own top 10, under *Leaderboard* in the menu. Custom routes and two-player matches have no board. The game works fine if the API is down. Scores are checked by the API (see *Cheating* below).
+**Leaderboard**: after a grade, the Daily Boulder or a Survival run, pick a name (letters and numbers, up to 12) and post the score. *Leaderboard* in the menu opens on **Overall**, a ranking of everyone by the total of their best score on every grade plus their Survival best. Each grade, each day's Daily and Survival also has its own top 10. Custom routes and two-player matches have no board. The game works fine if the API is down. Scores are checked by the API (see *Cheating* below).
 
 ## Balance
 
@@ -148,7 +148,7 @@ Anyone can read the leaderboard from any website or script. Replace the address 
 | `GET /v1/boards/{board}?limit=10` | The top scores on a board |
 | `GET /v1/players/{name}` | A player's best score and rank on every board |
 
-Boards are `v0`, `v1`, ... for grades, `survival`, and `daily-YYYY-MM-DD`. Use `daily` for the current Daily Boulder.
+Boards are `v0`, `v1`, ... for grades, `survival`, `daily-YYYY-MM-DD`, and `overall` (each player's best on every grade plus Survival, added up; read-only, nobody posts to it). Use `daily` for the current Daily Boulder.
 
 ```bash
 curl https://beta-blast-api.owaingdwilliams.workers.dev/v1/boards/daily?limit=3
@@ -182,7 +182,7 @@ Set options as `data-` attributes on the tag:
 
 | Attribute | Default | |
 |---|---|---|
-| `data-board` | `daily` | `daily`, `survival`, `v3`, `daily-2026-10-12`... |
+| `data-board` | `daily` | `overall`, `daily`, `survival`, `v3`, `daily-2026-10-12`... |
 | `data-limit` | `10` | Rows to show, 1 to 10 |
 | `data-title` | the board's name | The heading |
 | `data-theme` | `dark` | `dark`, `light`, or `auto` (follows the visitor's setting) |

@@ -279,14 +279,65 @@ describe('choosing a name', () => {
     expect((await setName(a, 'Ann')).status).toBe(200); // their own name again is fine
   });
 
-  it('lets a name be changed until there are scores under it', async () => {
+  const addScore = (board: string, name: string, score: number, seconds = 0) => env.DB.prepare('INSERT INTO scores (board, name, score, seconds, created_at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(board, name, score, seconds, score).run();
+
+  it('lets a name be changed, and takes the scores and the outfit along', async () => {
     const token = await signIn();
     await setName(token, 'Ann');
-    expect((await setName(token, 'Anna')).status).toBe(200);
-    await env.DB.prepare("INSERT INTO scores (board, name, score, seconds, created_at) VALUES ('v1', 'Anna', 5, 0, 1)").run();
-    const res = await setName(token, 'Ann2');
-    expect(res.status).toBe(409);
-    expect((await json(res)).error).toMatch(/fixed/);
+    await addScore('v1', 'Ann', 500);
+    await addScore('survival', 'Ann', 4000, 200);
+    await env.DB.prepare("INSERT INTO players (name, look, updated_at) VALUES ('Ann', '123', 1)").run();
+
+    expect(await json(await setName(token, 'Annabel'))).toEqual({ name: 'Annabel' });
+    expect((await json(await call('GET', '/me', { token }))).user.name).toBe('Annabel');
+    expect(await rows('SELECT board, name, score, seconds FROM scores ORDER BY board')).toEqual([
+      { board: 'survival', name: 'Annabel', score: 4000, seconds: 200 },
+      { board: 'v1', name: 'Annabel', score: 500, seconds: 0 },
+    ]);
+    expect(await rows('SELECT name, look FROM players')).toEqual([{ name: 'Annabel', look: '123' }]);
+    const board = await json(await call('GET', '/scores?board=v1', { origin: null }));
+    expect(board.scores[0]).toMatchObject({ name: 'Annabel', score: 500, look: '123', verified: true });
+  });
+
+  it('frees the old name, and lets someone else have it', async () => {
+    const a = await signIn('github');
+    const b = await signIn('github', 'gh-other');
+    await setName(a, 'Ann');
+    await setName(a, 'Anna');
+    expect((await setName(b, 'Ann')).status).toBe(200);
+  });
+
+  it('keeps the higher score when the new name already has one on the same board', async () => {
+    const token = await signIn();
+    await setName(token, 'Ann');
+    await addScore('v1', 'Ann', 500);
+    await addScore('v2', 'Ann', 300);
+    await addScore('v1', 'Walker', 900); // someone playing as a guest under the new name
+    await addScore('v2', 'Walker', 100);
+    await addScore('v3', 'Walker', 50);
+    await setName(token, 'Walker');
+    expect(await rows("SELECT board, score FROM scores WHERE name = 'Walker' ORDER BY board")).toEqual([{ board: 'v1', score: 900 }, { board: 'v2', score: 300 }, { board: 'v3', score: 50 }]);
+    expect(await rows("SELECT 1 FROM scores WHERE name = 'Ann'")).toHaveLength(0);
+  });
+
+  it('can change just the capital letters, without losing anything', async () => {
+    const token = await signIn();
+    await setName(token, 'ann');
+    await addScore('v1', 'ann', 500);
+    expect((await setName(token, 'Ann')).status).toBe(200);
+    expect(await rows('SELECT name, score FROM scores')).toEqual([{ name: 'Ann', score: 500 }]);
+  });
+
+  it('changes nothing if the new name is not allowed or is taken', async () => {
+    const a = await signIn('github');
+    const b = await signIn('github', 'gh-other');
+    await setName(a, 'Ann');
+    await setName(b, 'Bob');
+    await addScore('v1', 'Ann', 500);
+    expect((await setName(a, 'bob')).status).toBe(409);
+    expect((await setName(a, 'sh1t')).status).toBe(400);
+    expect((await json(await call('GET', '/me', { token: a }))).user.name).toBe('Ann');
+    expect(await rows('SELECT name FROM scores')).toEqual([{ name: 'Ann' }]);
   });
 
   it('lets someone claim a name that has anonymous scores, which then show as theirs', async () => {

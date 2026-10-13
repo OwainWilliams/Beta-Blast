@@ -66,7 +66,7 @@ Only the provider's own id for the person, the leaderboard name they chose, and 
 - Each sign-in is tied to the browser that started it. The game keeps a secret on the device and sends only its hash when it starts. Someone who starts a sign-in on their own account and sends the link to another person can't have it completed in that person's browser.
 - The place a sign-in returns to must be one of your game's own sites (the list is `ALLOWED_ORIGINS` in `worker/src/index.ts`).
 - Sessions last 30 days, can be ended by signing out, and stop working if the account is deleted.
-- A leaderboard name is first come, first served. If someone has been posting as a name as a guest, the first account to claim it gets it. Claim yours early.
+- A leaderboard name is first come, first served. If someone has been posting as a name as a guest, the first account to claim it gets it. Claim yours early. A name can be changed later from the Account screen: the account's scores and outfit move to the new name, and if the new name already has a score on a board, the higher one is kept.
 
 ## Where the accounts code is
 
