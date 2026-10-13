@@ -59,10 +59,10 @@ describe('the public read API', () => {
     await add(`daily-${today}`, 'A', 70);
     await add('daily-2020-01-01', 'A', 5);
     const body = await json(await get('/v1/boards'));
-    expect(body.boards.map((b: { id: string }) => b.id)).toEqual(['v2', 'v10', 'survival', `daily-${today}`, 'daily-2020-01-01']);
-    expect(body.boards[0]).toEqual({ id: 'v2', title: 'V2', kind: 'grade', entries: 2, topScore: 30 });
-    expect(body.boards[3]).toMatchObject({ title: 'Daily Boulder', kind: 'daily' });
-    expect(body.boards[4].title).toBe('Daily 2020-01-01');
+    expect(body.boards.map((b: { id: string }) => b.id)).toEqual(['overall', 'v2', 'v10', 'survival', `daily-${today}`, 'daily-2020-01-01']);
+    expect(body.boards[1]).toEqual({ id: 'v2', title: 'V2', kind: 'grade', entries: 2, topScore: 30 });
+    expect(body.boards[4]).toMatchObject({ title: 'Daily Boulder', kind: 'daily' });
+    expect(body.boards[5].title).toBe('Daily 2020-01-01');
     expect(body.aliases.daily).toBe(`daily-${today}`);
   });
 
@@ -170,6 +170,57 @@ describe('the public read API', () => {
     expect(res.headers.get('Cache-Control')).toBe('no-cache');
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
     expect((await json(res)).scores[0]).toMatchObject({ name: 'Ann', score: 900 });
+  });
+});
+
+describe('the overall board', () => {
+  it('adds up each player\'s best score on every grade, plus Survival, and ranks the totals', async () => {
+    await add('v0', 'Ann', 1000);
+    await add('v1', 'Ann', 2000);
+    await add('survival', 'Ann', 3000, 120);
+    await add('v0', 'Bob', 5000);
+    await add('v1', 'Cat', 2500);
+    await add('v2', 'Cat', 2500);
+    await add('v1', 'Dan', 100);
+    const body = await json(await get('/v1/boards/overall'));
+    expect(body).toMatchObject({ board: 'overall', title: 'Overall', kind: 'overall' });
+    expect(body.scores.map((s: { rank: number; name: string; score: number }) => [s.rank, s.name, s.score])).toEqual([[1, 'Ann', 6000], [2, 'Bob', 5000], [3, 'Cat', 5000], [4, 'Dan', 100]]); // a tie goes to whoever got there first
+    expect(body.scores[0].seconds).toBe(0);
+  });
+
+  it('leaves out the Daily boards, which change every day', async () => {
+    await add('v0', 'Ann', 100);
+    await add(`daily-${utcDay()}`, 'Ann', 9000);
+    await add(`daily-${utcDay()}`, 'Bob', 9000);
+    const names = (await json(await get('/v1/boards/overall'))).scores.map((s: { name: string }) => s.name);
+    expect(names).toEqual(['Ann']);
+  });
+
+  it('shows the outfit and the tick, like any other board, and respects the limit', async () => {
+    for (let i = 0; i < 12; i++) await add('v0', `P${i}`, 100 + i);
+    await wear('P11', '741');
+    await env.DB.prepare("INSERT INTO users (id, provider, provider_id, name, created_at) VALUES ('u1', 'github', '1', 'P11', 1)").run();
+    const body = await json(await get('/v1/boards/overall?limit=3'));
+    expect(body.scores).toHaveLength(3);
+    expect(body.scores[0]).toMatchObject({ name: 'P11', look: '741', verified: true });
+    expect((await json(await get('/v1/boards/overall'))).scores).toHaveLength(10);
+  });
+
+  it('is what the game\'s own call returns too, and is empty before anyone has played', async () => {
+    expect((await json(await get('/scores?board=overall'))).scores).toEqual([]);
+    await add('v0', 'Ann', 100);
+    expect((await json(await get('/scores?board=overall'))).scores).toEqual([{ name: 'Ann', score: 100, seconds: 0, look: '', verified: false }]);
+  });
+
+  it('is listed first, once someone has played, and is not a board anyone can post to', async () => {
+    expect((await json(await get('/v1/boards'))).boards).toEqual([]);
+    await add('v1', 'Ann', 100);
+    await add('v0', 'Bob', 50);
+    const boards = (await json(await get('/v1/boards'))).boards;
+    expect(boards.map((b: { id: string }) => b.id)).toEqual(['overall', 'v0', 'v1']);
+    expect(boards[0]).toEqual({ id: 'overall', title: 'Overall', kind: 'overall', entries: 2, topScore: 100 });
+    const post = await worker.fetch(new Request('https://api.example/scores', { method: 'POST', headers: { Origin: 'https://thesecretstage.vip', 'Content-Type': 'application/json' }, body: JSON.stringify({ board: 'overall', name: 'Ann', score: 1, replay: { shots: [[1, 0, 5]], tail: 0 } }) }), env);
+    expect(post.status).toBe(400);
   });
 });
 

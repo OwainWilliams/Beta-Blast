@@ -63,10 +63,11 @@ export class AccountScene extends Phaser.Scene {
     txt(this, WIDTH / 2, 112, `Signed in with ${PROVIDER_NAMES[provider]}`, 24);
     if (name) {
       txt(this, WIDTH / 2, 160, `Leaderboard name: ${name} ✓`, 20, '#ffd166');
-      txt(this, WIDTH / 2, 190, 'Fixed once you have scores. Only you can post under it.', 13, '#9aa6cf', false).setWordWrapWidth(450);
+      txt(this, WIDTH / 2, 190, 'Only you can post under it. If you change it, your scores come with you.', 13, '#9aa6cf', false).setWordWrapWidth(450);
+      makeButton(this, WIDTH / 2, 240, 280, 42, 'Change name', () => this.pickName(name), 0x7a4fd0, 17);
     } else {
       txt(this, WIDTH / 2, 160, 'No leaderboard name yet', 20, '#ffd166');
-      makeButton(this, WIDTH / 2, 218, 280, 46, 'Choose your name', () => this.pickName(), 0x7a4fd0, 18);
+      makeButton(this, WIDTH / 2, 218, 280, 46, 'Choose your name', () => this.pickName(''), 0x7a4fd0, 18);
     }
     makeButton(this, WIDTH / 2, 316, 280, 46, 'Sync now', () => void this.sync(), 0x2f6fdd, 18);
     txt(this, WIDTH / 2, 358, 'Scores, grades sent and your outfit follow you to every device.', 13, '#9aa6cf', false).setWordWrapWidth(450);
@@ -74,8 +75,8 @@ export class AccountScene extends Phaser.Scene {
     makeButton(this, WIDTH / 2, 520, 280, 38, 'Delete account', () => void this.remove(), 0x8a3b3b, 15);
   }
 
-  private pickName(): void {
-    const input = window.prompt(`Choose your leaderboard name (letters and numbers, up to ${MAX_NAME})`, '');
+  private pickName(current: string): void {
+    const input = window.prompt(`${current ? 'Choose a new' : 'Choose your'} leaderboard name (letters and numbers, up to ${MAX_NAME})`, current);
     if (input === null) return;
     const name = cleanName(input);
     if (!name) {
@@ -83,6 +84,7 @@ export class AccountScene extends Phaser.Scene {
       return;
     }
     this.say('Saving…');
+    if (name === current) return this.say('That is already your name.');
     void chooseName(name).then((r) => this.sys.isActive() && this.say(r.message, r.ok ? '#7ae6dc' : '#ff9a9a'));
   }
 

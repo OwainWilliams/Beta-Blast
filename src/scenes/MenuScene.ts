@@ -7,6 +7,7 @@ import { isMutedNow, toggleMute, unlockAudio } from '../game/audio';
 import { toggleMusic } from '../game/music';
 import { formatTime } from '../game/format';
 import { onAccountChange, takeNotice } from '../game/account';
+import { OVERALL } from '../game/boards';
 import { getAuth } from '../game/storage';
 import { makeButton, makeToggle, txt } from '../ui';
 
@@ -77,7 +78,7 @@ export class MenuScene extends Phaser.Scene {
       this.tweens.add({ targets: n, alpha: 0, delay: 3200, duration: 600, onComplete: () => n.destroy() });
     }
     makeButton(this, 70, 24, 116, 32, 'Customise', () => this.scene.start('Customise'), 0x59627f, 14);
-    makeButton(this, WIDTH - 70, 24, 116, 32, 'Leaderboard', () => this.scene.start('Leaderboard'), 0x59627f, 14);
+    makeButton(this, WIDTH - 70, 24, 116, 32, 'Leaderboard', () => this.scene.start('Leaderboard', { board: OVERALL }), 0x59627f, 14);
 
     // Extras and settings, kept small so they stay out of the way. Controls are taught by the in-game tips.
     makeButton(this, 185, 612, 150, 34, 'Route Setter', () => this.scene.start('Editor'), 0x4a3a7a, 15);

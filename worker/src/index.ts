@@ -18,6 +18,7 @@ import { authenticate, AuthEnv, bearer } from './auth';
 import type { D1 } from './db';
 import { withinLimit } from './limits';
 import { allowedOrigin, BOARD_SIZE, isBoard, parseSubmission, POSTS_PER_MINUTE } from './rules';
+import { topScores } from './leaders';
 import { boardView, ENDPOINTS, listBoards, playerView } from './v1';
 
 interface Env extends AuthEnv {
@@ -65,7 +66,7 @@ export default {
         if (path === '/scores') {
           const board = url.searchParams.get('board');
           if (!isBoard(board)) return reply({ error: 'Unknown board' }, 400);
-          return reply({ board, scores: await top(env.DB, board) }, 200, { 'Cache-Control': 'no-cache' });
+          return reply({ board, scores: await topScores(env.DB, board, BOARD_SIZE) }, 200, { 'Cache-Control': 'no-cache' });
         }
         if (path === '/' || path === '/v1' || path.startsWith('/v1/')) return await cached(request, ctx, () => v1(path, url, env.DB, reply));
         return reply({ error: 'Not found' }, 404);
@@ -131,18 +132,6 @@ export default {
     }
   },
 };
-
-async function top(db: D1, board: string) {
-  const { results } = await db
-    .prepare(
-      `SELECT s.name AS name, s.score AS score, s.seconds AS seconds, COALESCE(p.look, '') AS look, u.id IS NOT NULL AS verified
-       FROM scores s LEFT JOIN players p ON p.name = s.name LEFT JOIN users u ON u.name = s.name
-       WHERE s.board = ?1 ORDER BY s.score DESC, s.created_at ASC LIMIT ?2`,
-    )
-    .bind(board, BOARD_SIZE)
-    .all<{ name: string; score: number; seconds: number; look: string; verified: number }>();
-  return results.map((r) => ({ ...r, verified: !!r.verified }));
-}
 
 type Reply = (body: unknown, status?: number, extra?: Record<string, string>) => Response;
 

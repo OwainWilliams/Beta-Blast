@@ -225,6 +225,18 @@ describe('keeping the save in step', () => {
     expect(getCloudSave().best).toEqual({ v1: 100 }); // nothing lost
   });
 
+  it('does not trust a malformed answer from the server', async () => {
+    recordResult('v1', 100, true);
+    await signIn();
+    const real = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => (String(input).endsWith('/me/save') ? Response.json({ save: null, junk: [1] }) : real(input, init))));
+    await expect(syncNow()).resolves.toBe(true); // no crash, and the local save is untouched
+    expect(getCloudSave().best).toEqual({ v1: 100 });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => (String(input).endsWith('/me/save') ? Response.json({ save: { best: 'nope', sent: 7 } }) : real(input, init))));
+    await expect(syncNow()).resolves.toBe(true);
+    expect(getCloudSave().best).toEqual({ v1: 100 });
+  });
+
   it('survives the server being unreachable', async () => {
     await signIn();
     vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('offline'))));

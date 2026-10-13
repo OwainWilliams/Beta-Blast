@@ -4,7 +4,7 @@
 // Signing in sends the browser away to the provider and back here with "#login=<one-time code>" on the address.
 // completeSignIn() swaps that code for a session token, which is kept on this device.
 import { API_URL } from '../config';
-import { EMPTY_SAVE, sameSave } from './saveMerge';
+import { cleanSave, sameSave } from './saveMerge';
 import type { CloudSave } from './saveMerge';
 import { Auth, getAuth, getCloudSave, mergeCloudSave, onSaveChange, setAuth } from './storage';
 
@@ -175,12 +175,13 @@ async function syncOnce(): Promise<boolean> {
   }
   const remote = await api<{ save: CloudSave | null }>('/me/save');
   if (!remote.ok) return false;
-  mergeCloudSave(remote.data.save ?? EMPTY_SAVE);
+  const theirs = cleanSave(remote.data.save); // whatever the server sends, only a well-formed save gets in
+  mergeCloudSave(theirs);
   const local = getCloudSave();
-  if (remote.data.save && sameSave(local, remote.data.save)) return true; // nothing the cloud lacks
+  if (remote.data.save && sameSave(local, theirs)) return true; // nothing the cloud lacks
   const put = await api<{ save: CloudSave }>('/me/save', { method: 'PUT', body: { save: local } });
   if (!put.ok) return false;
-  mergeCloudSave(put.data.save);
+  mergeCloudSave(cleanSave(put.data.save));
   return true;
 }
 

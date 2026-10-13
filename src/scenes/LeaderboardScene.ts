@@ -1,19 +1,21 @@
 import Phaser from 'phaser';
 import { WIDTH } from '../config';
 import { formatTime } from '../game/format';
+import { OVERALL } from '../game/boards';
 import { boardTitle, Entry, fetchTop, lastPlayedBoard, todaysBoard } from '../game/leaderboard';
-import { getPlayerName } from '../game/storage';
+import { getAuth, getPlayerName } from '../game/storage';
 import { lookOrDefault } from '../game/looks';
 import { askName, makeButton, makeIcon, txt } from '../ui';
 
 const GRADES = 30; // how far the grade arrows go
-const BOARDS = [todaysBoard(), 'survival', ...Array.from({ length: GRADES }, (_, g) => `v${g}`)];
+const BOARDS = [OVERALL, todaysBoard(), 'survival', ...Array.from({ length: GRADES }, (_, g) => `v${g}`)];
 let lastBoard = 0; // remembered while the page is open
 
 export class LeaderboardScene extends Phaser.Scene {
   private rows: Phaser.GameObjects.GameObject[] = [];
   private title!: Phaser.GameObjects.Text;
   private nameText!: Phaser.GameObjects.Text;
+  private subtitle!: Phaser.GameObjects.Text;
   private shown = -1; // guards against a slow reply for a board the player has already left
 
   constructor() {
@@ -21,7 +23,7 @@ export class LeaderboardScene extends Phaser.Scene {
   }
 
   init(data: { board?: string }): void {
-    const i = BOARDS.indexOf(data?.board ?? lastPlayedBoard() ?? '');
+    const i = BOARDS.indexOf(data?.board ?? lastPlayedBoard() ?? OVERALL);
     if (i >= 0) lastBoard = i;
   }
 
@@ -33,12 +35,15 @@ export class LeaderboardScene extends Phaser.Scene {
       makeButton(this, x, 110, 52, 40, label, () => this.show((lastBoard + delta + BOARDS.length) % BOARDS.length), 0x59627f, 22);
     arrow(60, '‹', -1);
     arrow(WIDTH - 60, '›', 1);
-    makeButton(this, 150, 160, 130, 34, 'Daily', () => this.show(0), 0xd9622b, 15);
-    makeButton(this, 390, 160, 130, 34, 'Survival', () => this.show(1), 0xc23b5a, 15);
+    makeButton(this, 100, 160, 110, 34, 'Overall', () => this.show(0), 0x7a4fd0, 15);
+    makeButton(this, 270, 160, 110, 34, 'Daily', () => this.show(1), 0xd9622b, 15);
+    makeButton(this, 440, 160, 110, 34, 'Survival', () => this.show(2), 0xc23b5a, 15);
+    this.subtitle = txt(this, WIDTH / 2, 190, '', 12, '#9aa6cf', false);
 
     this.nameText = txt(this, WIDTH / 2, 580, '', 16, '#c9d1ee', false);
     makeButton(this, 140, 660, 200, 46, 'Change name', () => {
-      if (askName()) this.show(lastBoard);
+      if (getAuth()) this.scene.start('Account'); // a signed-in player's name is changed on their account
+      else if (askName()) this.show(lastBoard);
     }, 0x7a4fd0, 18);
     makeButton(this, 400, 660, 200, 46, 'Back', () => this.scene.start('Menu'), 0x59627f, 18);
     this.show(lastBoard);
@@ -49,6 +54,7 @@ export class LeaderboardScene extends Phaser.Scene {
     this.shown = i;
     const board = BOARDS[i];
     this.title.setText(boardTitle(board));
+    this.subtitle.setText(board === OVERALL ? "Everyone's best score on every grade, added up, plus Survival" : '');
     const me = getPlayerName();
     this.nameText.setText(me ? `You play as ${me}` : 'No name yet. Post a score to pick one.');
     this.rows.forEach((r) => r.destroy());

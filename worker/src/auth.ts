@@ -190,17 +190,35 @@ export async function logout(db: D1, token: string): Promise<void> {
 
 // ---------- the account ----------
 
-/** Pick the leaderboard name. It is unique, and once there are scores under it it can't change. */
+/**
+ * Pick or change the leaderboard name. Names are unique. Changing it takes the account's scores (and outfit) to the
+ * new name; if the new name already has scores of its own on a board, the higher one is kept.
+ */
 export async function setName(db: D1, user: User, raw: unknown): Promise<{ name: string } | { error: string; status: number }> {
   const name = cleanName(raw);
   if (!name) return { error: 'That name is not allowed. Use 1 to 12 letters, numbers, spaces, . _ -', status: 400 };
   if (user.name === name) return { name };
-  if (user.name) {
-    const has = await db.prepare('SELECT 1 AS x FROM scores WHERE name = ?1 LIMIT 1').bind(user.name).first();
-    if (has) return { error: 'Your name is fixed once you have scores. Delete your account to start again.', status: 409 };
-  }
   const taken = await db.prepare('SELECT 1 AS x FROM users WHERE name = ?1 AND id <> ?2').bind(name, user.id).first();
   if (taken) return { error: 'That name is taken', status: 409 };
+  const old = user.name;
+  if (old) {
+    if (old.toLowerCase() === name.toLowerCase()) {
+      // only the capital letters change: the same rows, shown the new way
+      await db.prepare('UPDATE scores SET name = ?2 WHERE name = ?1').bind(old, name).run();
+      await db.prepare('UPDATE players SET name = ?2 WHERE name = ?1').bind(old, name).run();
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO scores (board, name, score, seconds, created_at) SELECT board, ?2, score, seconds, created_at FROM scores WHERE name = ?1
+           ON CONFLICT (board, name) DO UPDATE SET score = excluded.score, seconds = excluded.seconds, created_at = excluded.created_at WHERE excluded.score > scores.score`,
+        )
+        .bind(old, name)
+        .run();
+      await db.prepare('DELETE FROM scores WHERE name = ?1').bind(old).run();
+      await db.prepare('DELETE FROM players WHERE name = ?1').bind(name).run(); // the outfit that goes with the account wins
+      await db.prepare('UPDATE players SET name = ?2 WHERE name = ?1').bind(old, name).run();
+    }
+  }
   await db.prepare('UPDATE users SET name = ?1 WHERE id = ?2').bind(name, user.id).run();
   return { name };
 }
