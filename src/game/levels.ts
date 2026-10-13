@@ -15,6 +15,7 @@ export interface LevelSpec {
   versus?: boolean; // two players: pops send rows to the opponent
   shared?: boolean; // both players get the same stream of holds
   survival?: boolean; // no win: the wall keeps coming and the score is how long you last
+  arcade?: boolean; // Survival with a weekly table of initials (see arcade.ts)
   custom?: boolean;
   layout?: number[][]; // hand-built route: hold type per cell, -1 = empty
   code?: string; // share code for a custom route

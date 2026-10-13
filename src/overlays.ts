@@ -25,6 +25,7 @@ export interface RoundResult {
   speed: number; // speed bonus when sent
   seconds: number; // how long the round took
   flash: boolean;
+  note?: string; // one line under the result (Arcade: why the score isn't on the table)
   survival?: { seconds: number; stage: number; bestSeconds: number; newBestScore: boolean; newBestTime: boolean };
   /** Leaderboard posting. `name` is the saved name ('' if none yet); `ask` prompts for one; `send` posts and says how it went. */
   post?: { name: string; ask: () => string | null; send: (name: string) => Promise<{ ok: boolean; message: string }>; view: () => void };
@@ -56,6 +57,7 @@ export function showRoundResult(scene: Phaser.Scene, r: RoundResult): Container 
   }
   if (r.won) c.add(txt(scene, WIDTH / 2, 298, r.flash ? `FLASH! No pumps. Bonus +${r.bonus}` : `Route bonus +${r.bonus}`, 18, '#ffd166'));
   if (r.won) c.add(txt(scene, WIDTH / 2, 324, `Time ${formatTime(r.seconds)}${r.speed > 0 ? `  ·  Speed bonus +${r.speed}` : ''}`, 15, '#7ae6dc'));
+  if (r.note) c.add(txt(scene, WIDTH / 2, 352, r.note, 15, '#9aa6cf', false));
   let y = 370;
   if (r.post) {
     y = 420;

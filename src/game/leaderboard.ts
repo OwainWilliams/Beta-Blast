@@ -21,9 +21,9 @@ export const rememberBoard = (board: string): void => void (lastBoard = board);
 export const lastPlayedBoard = (): string | null => lastBoard;
 const TIMEOUT_MS = 6000;
 
-/** The board for a level, or null if it has none (custom routes and two-player matches). */
-export function boardFor(level: { id: string; custom?: boolean; versus?: boolean }): string | null {
-  return level.custom || level.versus ? null : level.id;
+/** The board for a level, or null if it has none here (custom routes and two-player matches; Arcade has its own). */
+export function boardFor(level: { id: string; custom?: boolean; versus?: boolean; arcade?: boolean }): string | null {
+  return level.custom || level.versus || level.arcade ? null : level.id; // Arcade has its own table (fetchArcade / postArcade)
 }
 
 /** Letters, numbers, spaces and . _ - only, at most 12 characters. Returns null if nothing usable is left. */
@@ -65,4 +65,28 @@ export async function postScore(board: string, name: string, score: number, seco
   if (!data) return { ok: false, message: "Couldn't reach the leaderboard" };
   if ('error' in data) return { ok: false, message: data.error };
   return { ok: true, message: data.score >= data.best ? `Leaderboard rank #${data.rank}` : `Your best here is ${data.best} (rank #${data.rank})` };
+}
+
+/** This week's Arcade table (three-character initials, top 10), or null if the leaderboard can't be reached. */
+export async function fetchArcade(): Promise<Entry[] | null> {
+  const data = await call<{ scores: Entry[] }>('/arcade');
+  return data && 'scores' in data && Array.isArray(data.scores) ? data.scores : null;
+}
+
+let lastArcade: { initials: string; score: number } | null = null;
+/** The run just entered, so the Arcade table can highlight it. */
+export const lastArcadeRun = (): { initials: string; score: number } | null => lastArcade;
+
+/** Post an Arcade run under three-character initials, with its moves so the server can check the score. */
+export async function postArcade(initials: string, score: number, seconds: number, replay: Replay): Promise<{ ok: boolean; message: string }> {
+  const data = await call<{ qualified: boolean; rank: number | null }>('/arcade', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ initials, score, seconds: Math.max(1, Math.round(seconds)), replay }),
+  });
+  if (!data) return { ok: false, message: "Couldn't reach the leaderboard" };
+  if ('error' in data) return { ok: false, message: data.error };
+  if (!data.qualified) return { ok: false, message: "Someone just beat that. You didn't make the top 10" };
+  lastArcade = { initials, score };
+  return { ok: true, message: `Rank #${data.rank}` };
 }

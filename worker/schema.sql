@@ -62,3 +62,15 @@ CREATE TABLE IF NOT EXISTS saves (
   data TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+-- Arcade: every run that made a week's top 10, under three-character initials. Unlike `scores`, the same
+-- initials can appear many times (they belong to nobody). Only the top 10 of each week are kept.
+CREATE TABLE IF NOT EXISTS arcade_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  week TEXT NOT NULL,                   -- the Monday that starts the week, "2026-10-12"
+  initials TEXT NOT NULL,
+  score INTEGER NOT NULL,
+  seconds INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS arcade_by_week ON arcade_scores (week, score DESC, id);

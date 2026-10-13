@@ -7,6 +7,9 @@ import { EditorScene } from './scenes/EditorScene';
 import { LobbyScene } from './scenes/LobbyScene';
 import { LeaderboardScene } from './scenes/LeaderboardScene';
 import { CustomiseScene } from './scenes/CustomiseScene';
+import { GradesScene } from './scenes/GradesScene';
+import { HowToScene } from './scenes/HowToScene';
+import { InitialsScene } from './scenes/InitialsScene';
 import { AccountScene } from './scenes/AccountScene';
 import { startAccount } from './game/account';
 
@@ -17,7 +20,7 @@ const game = new Phaser.Game({
   height: HEIGHT,
   backgroundColor: '#14171f',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [BootScene, MenuScene, GameScene, EditorScene, LobbyScene, LeaderboardScene, CustomiseScene, AccountScene],
+  scene: [BootScene, MenuScene, GameScene, EditorScene, LobbyScene, LeaderboardScene, CustomiseScene, AccountScene, InitialsScene, GradesScene, HowToScene],
 });
 
 // Dev-only handle so browser tests can inspect the running game.

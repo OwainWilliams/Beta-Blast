@@ -41,6 +41,8 @@ npm run build    # production build in dist/
 
 ## How to play
 
+Every way to play on the menu has a **?** beside it that explains how that mode works. **Grades** opens the list of numbered grades (V0, V1, ...); the other modes start straight away.
+
 - **Aim**: move the mouse or drag a finger. Arrow keys / A / D also work. The chalk bag leans toward your aim and a ghost hold shows where your shot will land.
 - **Shoot**: release the click or tap, or press Space.
 - **Swap**: tap NEXT, or press S.
@@ -53,6 +55,9 @@ Each colour of hold (jug, crimp, sloper, pinch, pocket) also has its own shape, 
 **Row timer**: a gauge down the right edge fills with time, and when it is full the wall drops another row, so a game that drags on keeps getting harder. The higher the grade, the faster it fills (90 s at V0, about 38 s at V12, never faster than 20 s). Any new row restarts it, and a clear before the first timed row still earns FLASH.
 
 **Survival**: a mode with no finish line. The wall keeps coming on a timer that speeds up as the stages go by (a stage every 40 s: rows start every 11 s and tighten 5% per stage down to 4.5 s). The wall starts with 3 colours, gets a fourth at stage 3, volumes at stage 4, all five colours at stage 5 and slick holds at stage 6. Each new stage pays +250 and the music picks up the pace. Clear every colour and you get a **clean sweep**: +500 and three fresh rows arrive at once. The run ends when the wall reaches the red line, and your best score and longest run are saved.
+
+**Arcade**: Survival played for a weekly table of three-character initials, like an old cabinet (*Arcade* in the menu). The rules are exactly Survival's. If your score makes the week's top 10, a name-entry screen opens: ▲ ▼ (or the arrow keys) scroll through A to Z and 0 to 9, Return locks a character and moves right, Backspace goes back, and typing a character works too (on a phone use the on-screen buttons). The table clears every Monday at 00:00 UTC. Initials belong to nobody, so the same ones can appear many times, Arcade scores don't count towards the Overall ranking, and a few rude combinations are refused. Runs are checked like any other score.
+
 
 **2 Player** (menu, bottom right): race a friend over the internet.
 
@@ -149,7 +154,7 @@ Anyone can read the leaderboard from any website or script. Replace the address 
 | `GET /v1/boards/{board}?limit=10` | The top scores on a board |
 | `GET /v1/players/{name}` | A player's best score and rank on every board |
 
-Boards are `v0`, `v1`, ... for grades, `survival`, `daily-YYYY-MM-DD`, and `overall` (each player's best on every grade plus Survival, added up; read-only, nobody posts to it). Use `daily` for the current Daily Boulder.
+Boards are `v0`, `v1`, ... for grades, `survival`, `daily-YYYY-MM-DD`, `arcade-YYYY-MM-DD` (the Arcade table for the week starting that Monday; use `arcade` for this week's) and `overall` (each player's best on every grade plus Survival, added up; read-only, nobody posts to it). Use `daily` for the current Daily Boulder.
 
 ```bash
 curl https://beta-blast-api.owaingdwilliams.workers.dev/v1/boards/daily?limit=3

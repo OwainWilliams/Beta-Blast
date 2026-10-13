@@ -22,6 +22,7 @@ export const todaysBoard = (): string => dailyLevel().id;
 export function boardTitle(board: string, today = dateKey()): string {
   if (board === OVERALL) return 'Overall';
   if (board === 'survival') return 'Survival';
+  if (board === 'arcade' || board.startsWith('arcade-')) return 'Arcade';
   if (board.startsWith('daily-')) return board === `daily-${today}` ? 'Daily Boulder' : `Daily ${board.slice(6)}`;
   return board.toUpperCase();
 }
