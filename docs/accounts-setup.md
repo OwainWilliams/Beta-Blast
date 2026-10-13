@@ -45,7 +45,9 @@ Save and deploy. Nothing needs redeploying from GitHub. Never paste these into a
 
 | What you see | Likely cause |
 |---|---|
-| "Sign-in isn't available right now" | The secrets are missing or named wrongly, or the Worker can't be reached. Check `/auth/providers`. |
+| "Sign-in isn't available right now" | The secrets are missing, named wrongly, or were added but not deployed. Open `/auth/providers` (step 4): an empty `[]` means the Worker can't see a complete pair. Check the names are exactly `GH_CLIENT_ID` and `GH_CLIENT_SECRET` (not `GITHUB_...`, which is what GitHub's own page calls them), that you clicked **Deploy** after adding them, and that you added them to the **beta-blast-api Worker** and not to a Pages project. Then reload the game. |
+| Back in the game with "Couldn't sign in" | The Client secret is wrong or has been regenerated. Paste the current one again. |
+| GitHub shows an error page instead of asking you to authorise | The callback address on GitHub's side doesn't match the Worker's address exactly. |
 | The provider says "redirect_uri mismatch" | The callback address in the provider's settings doesn't exactly match the Worker's address. |
 | Google says the app isn't verified or you're not a test user | The consent screen is still in **Testing**. Switch it to **In production**. |
 | "This sign-in has expired" | The sign-in took over ten minutes, or the page was reloaded part-way. Try again. |

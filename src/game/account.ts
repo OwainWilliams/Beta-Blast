@@ -75,8 +75,9 @@ export async function availableProviders(): Promise<Provider[]> {
   if (providers) return providers;
   const r = await api<{ providers: Provider[] }>('/auth/providers', { auth: false });
   if (!r.ok || !Array.isArray(r.data.providers)) return [];
-  providers = r.data.providers.filter((p): p is Provider => p === 'github' || p === 'google');
-  return providers;
+  const found = r.data.providers.filter((p): p is Provider => p === 'github' || p === 'google');
+  if (found.length) providers = found; // an empty answer isn't kept, so setting sign-in up doesn't need a page reload to show
+  return found;
 }
 
 const VERIFIER_KEY = 'beta-blast.verifier';

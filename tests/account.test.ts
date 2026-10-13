@@ -13,7 +13,8 @@ import { fakeProviders } from './providers';
 const GAME = 'https://thesecretstage.vip';
 const PAGE = { origin: GAME, pathname: '/Beta-Blast/' };
 
-let env: { DB: ReturnType<typeof fakeD1>; GH_CLIENT_ID: string; GH_CLIENT_SECRET: string; GOOGLE_CLIENT_ID: string; GOOGLE_CLIENT_SECRET: string };
+type Env = { DB: ReturnType<typeof fakeD1>; GH_CLIENT_ID: string; GH_CLIENT_SECRET: string; GOOGLE_CLIENT_ID: string; GOOGLE_CLIENT_SECRET: string };
+let env: Env;
 let store: Map<string, string>;
 let serverCalls: string[];
 
@@ -58,6 +59,15 @@ afterEach(() => {
 });
 
 describe('signing in', () => {
+  it('asks again if no provider was set up yet, so setting sign-in up does not need a reload', async () => {
+    const saved = { ...env };
+    delete (env as Partial<Env>).GH_CLIENT_ID;
+    delete (env as Partial<Env>).GOOGLE_CLIENT_ID;
+    expect(await availableProviders()).toEqual([]);
+    Object.assign(env, saved); // the secrets are added
+    expect(await availableProviders()).toEqual(['github', 'google']);
+  });
+
   it('offers the providers the server has set up, and the address that starts a sign-in', async () => {
     expect(await availableProviders()).toEqual(['github', 'google']);
     expect(signInAddress('google', 'ab'.repeat(32), PAGE)).toBe(`${API_URL}/auth/google/start?return_to=${encodeURIComponent('https://thesecretstage.vip/Beta-Blast/')}&challenge=${'ab'.repeat(32)}`);
