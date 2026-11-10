@@ -55,6 +55,7 @@ const inPage = (p, fn, arg) =>
         routes: await import('/src/game/routes.ts'),
         grid: await import('/src/game/grid.ts'),
         arcade: await import('/src/game/arcade.ts'),
+        storage: await import('/src/game/storage.ts'),
       };
       return new Function('m', 'game', 'arg', `return (async () => { ${src} })()`)(m, window.__game, a);
     },
@@ -211,6 +212,7 @@ try {
       const rows = [['ACE', 9100, 213], ['OWN', 8200, 190], ['SAM', 7400, 171], ['PIP', 5100, 120], ['BOB', 3000, 92], ['ZZZ', 2500, 80], ['MAX', 2210, 75], ['K8T', 1800, 60]];
       return r.fulfill({ json: { week: '2026-10-12', scores: rows.map(([name, score, seconds]) => ({ name, score, seconds, look: '', verified: false })) }, headers: cors });
     }
+    if (reqUrl.pathname === '/scores' && r.request().method() === 'POST') return r.fulfill({ json: { rank: 1, best: 4210, score: 4210 }, headers: cors });
     const board = reqUrl.searchParams.get('board') ?? 'v3'; // (URL is the dev server's address in this script)
     const totals = board === 'overall'; // the overall board adds up each player's best scores, so its numbers are bigger
     const scores = [
@@ -287,6 +289,43 @@ try {
   if (!(await C.evaluate(() => window.__game.scene.isActive('Leaderboard')))) throw new Error('Saving initials did not open the table');
   console.log('posted', JSON.stringify({ initials: arcadePosts[0]?.initials, score: arcadePosts[0]?.score, seconds: arcadePosts[0]?.seconds, hasSeed: arcadePosts[0]?.replay?.seed === 99 }));
   await shot(C, 'arcade-leaderboard');
+
+  // 11. the Daily Boulder: one attempt a day, then a clock to the next one
+  const active = (name) => C.evaluate((n) => window.__game.scene.isActive(n), name);
+  await inPage(C, `game.scene.getScene('Leaderboard').scene.start('Menu');`);
+  await sleep(900);
+  await shot(C, 'daily-unused');
+  await C.mouse.click(400, 262); // Daily Boulder
+  await sleep(1200);
+  if (!(await active('Game'))) throw new Error('the unused Daily did not start');
+  if (await inPage(C, `return m.storage.dailyUsed(m.levels.dailyLevel().id);`)) throw new Error('the Daily counted as used before any shot');
+  await inPage(C, `const s = game.scene.getScene('Game'); s.aim = 0.1;`);
+  await C.keyboard.press('Space'); // the first shot uses the attempt
+  await sleep(600);
+  if (!(await inPage(C, `return m.storage.dailyUsed(m.levels.dailyLevel().id);`))) throw new Error('the first shot did not use the Daily attempt');
+  await C.keyboard.press('r'); // a restart must not give another go
+  await sleep(500);
+  if ((await inPage(C, `return game.scene.getScene('Game').recorder.shots.length;`)) !== 1) throw new Error('restart gave a second attempt');
+  await C.keyboard.press('Escape');
+  await sleep(500);
+  await shot(C, 'daily-pause');
+  await C.keyboard.press('Escape');
+  await sleep(300);
+  await inPage(C, `const s = game.scene.getScene('Game'); s.engine.score = 4210; s.endGame(false);`);
+  await sleep(2200);
+  await shot(C, 'daily-result');
+  await inPage(C, `game.scene.getScene('Game').leave();`);
+  await sleep(1200);
+  await shot(C, 'daily-used');
+  await C.mouse.click(400, 262); // now it opens today's board instead
+  await sleep(900);
+  if (!(await active('Leaderboard'))) throw new Error('a used Daily did not open its board');
+  await inPage(C, `game.scene.getScene('Leaderboard').scene.start('Menu');`);
+  await sleep(600);
+  await inPage(C, `game.scene.getScene('Menu').scene.start('Game', { level: m.levels.dailyLevel() });`); // even if started some other way
+  await sleep(1000);
+  if (!(await active('Leaderboard')) || (await active('Game'))) throw new Error('the Game scene let a used Daily start again');
+  console.log('daily: one attempt enforced');
 } finally {
   await browser.close();
   server.kill();

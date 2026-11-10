@@ -9,7 +9,8 @@ import { lookOrDefault } from '../game/looks';
 import { askName, makeButton, makeIcon, txt } from '../ui';
 
 const GRADES = 30; // how far the grade arrows go
-const BOARDS = [OVERALL, todaysBoard(), 'survival', ARCADE, ...Array.from({ length: GRADES }, (_, g) => `v${g}`)];
+const makeBoards = () => [OVERALL, todaysBoard(), 'survival', ARCADE, ...Array.from({ length: GRADES }, (_, g) => `v${g}`)];
+let BOARDS = makeBoards(); // worked out again on each visit, so the Daily tab follows the date
 let lastBoard = 0; // remembered while the page is open
 
 export class LeaderboardScene extends Phaser.Scene {
@@ -26,6 +27,7 @@ export class LeaderboardScene extends Phaser.Scene {
   }
 
   init(data: { board?: string }): void {
+    BOARDS = makeBoards();
     const i = BOARDS.indexOf(data?.board ?? lastPlayedBoard() ?? OVERALL);
     if (i >= 0) lastBoard = i;
   }

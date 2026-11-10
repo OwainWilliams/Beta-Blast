@@ -37,8 +37,8 @@ export const MODES: ModeInfo[] = [
     lines: [
       'A new wall every day, and everyone gets the same one. It is a grade between V3 and V7.',
       'The rules are the Grades rules: clear the wall, send it fast, and try for a FLASH.',
-      'Play as often as you like. Your best score today goes on the Daily leaderboard.',
-      'Come back tomorrow for a new route.',
+      'You get ONE attempt a day. It counts from your first shot, so leaving or restarting does not give you another.',
+      "Post your score to the Daily leaderboard. A clock on the menu counts down to tomorrow's route.",
     ],
   },
   {

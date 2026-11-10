@@ -6,7 +6,7 @@ import { BOMB, Cell, Hold, H, SLICK, VOLUME, WILD } from '../game/grid';
 import { gradeLevel, LevelSpec, survivalLevel, versusLevel } from '../game/levels';
 import { changeGrade, pauseMusic, resumeMusic, setIntensity, startMusic, stopMusic, toggleMusic } from '../game/music';
 import { isMutedNow, sfx, toggleMute, unlockAudio } from '../game/audio';
-import { getAuth, getBest, getBestTime, getLookCode, getMusic, getPlayerName, getShake, recordResult, recordTime, setShake } from '../game/storage';
+import { dailyUsed, getAuth, getBest, getBestTime, getLookCode, getMusic, getPlayerName, getShake, markDailyStarted, recordResult, recordTime, setShake } from '../game/storage';
 import { ChalkBag, chalkPuff } from '../chalkBag';
 import { chalkBurst, colourRing, confetti, floatText, popWord } from '../effects';
 import { Hints } from '../hints';
@@ -119,6 +119,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    // The Daily Boulder is one attempt a day. Starting it again goes to today's board instead.
+    if (this.level.daily && dailyUsed(this.level.id)) {
+      this.scene.start('Leaderboard', { board: this.level.id });
+      return;
+    }
     this.resetRound();
     this.add.image(0, 0, 'wall').setOrigin(0);
     for (const [r, c] of this.engine.grid.cells()) this.makeSprite(this.engine.grid.get(r, c)!, r, c);
@@ -301,6 +306,7 @@ export class GameScene extends Phaser.Scene {
   private fire(): void {
     if (this.state !== 'aiming' || this.paused) return;
     const aim = this.recorder.fire(this.aim);
+    if (this.level.daily) markDailyStarted(this.level.id); // the one attempt starts with the first shot
     const type = this.engine.shoot();
     const f = this.engine.launch(aim);
     const sprite = this.add.image(LAUNCH_X, LAUNCH_Y, `hold-${type}`).setDepth(10);
@@ -656,6 +662,7 @@ export class GameScene extends Phaser.Scene {
       this.time.delayedCall(won ? 2000 : 900, () => this.showVersusResult(won, reason));
       return;
     }
+    if (this.level.daily) markDailyStarted(this.level.id); // even a round that ends before any shot has been used
     recordResult(this.level.id, this.engine.score, won);
     if (this.level.survival) recordTime(this.level.id, this.engine.elapsed);
     const records = { score: this.engine.score > previousBest, time: Math.round(this.engine.elapsed) > previousTime };
@@ -675,6 +682,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
+    if (this.level.daily && dailyUsed(this.level.id)) return; // one attempt a day
     this.scene.restart(this.level.arcade ? { level: arcadeLevel() } : this.level.survival ? { level: survivalLevel() } : this.data0);
   }
 
@@ -709,7 +717,8 @@ export class GameScene extends Phaser.Scene {
       survival: this.level.survival ? { seconds: e.elapsed, stage: e.stage(), bestSeconds: getBestTime(id), newBestScore: records.score, newBestTime: records.time } : undefined,
       post: this.leaderboardPost(),
       next: won && !this.level.daily && !this.level.custom ? { label: `Next: V${this.level.grade + 1}`, go: () => this.scene.restart({ level: gradeLevel(this.level.grade + 1) }) } : undefined,
-      again: () => this.restart(),
+      again: this.level.daily ? undefined : () => this.restart(),
+      daily: this.level.daily,
       leaveLabel: this.leaveLabel(),
       leave: () => this.leave(),
     });
@@ -875,7 +884,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.pauseUi = showPauseMenu(this, {
       resume: () => this.setPaused(false),
-      restart: () => this.restart(),
+      restart: this.level.daily && dailyUsed(this.level.id) ? undefined : () => this.restart(),
+      note: this.level.daily ? (dailyUsed(this.level.id) ? 'This is your one attempt for today. Leaving counts as your try.' : 'One attempt a day: it starts with your first shot.') : undefined,
       leaveLabel: this.leaveLabel(),
       leave: () => this.leave(),
       soundLabel: () => `Sound: ${isMutedNow() ? 'off' : 'on'}`,

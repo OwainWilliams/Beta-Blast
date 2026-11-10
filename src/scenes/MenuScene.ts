@@ -4,7 +4,8 @@ import { arcadeLevel } from '../game/arcade';
 import { ModeId, modeInfo } from '../game/modes';
 import { dailyLevel, LevelSpec, survivalLevel } from '../game/levels';
 import { codeFromInput, decodeRoute, routeLevel } from '../game/routes';
-import { getBest, getBestTime, getMusic, getShake, isSent, setShake } from '../game/storage';
+import { dailyUsed, getBest, getBestTime, getMusic, getShake, isSent, setShake } from '../game/storage';
+import { formatCountdown, msUntilNextDay } from '../game/daily';
 import { isMutedNow, toggleMute, unlockAudio } from '../game/audio';
 import { toggleMusic } from '../game/music';
 import { formatTime } from '../game/format';
@@ -34,15 +35,28 @@ export class MenuScene extends Phaser.Scene {
     const daily = dailyLevel();
     let nextGrade = 0;
     while (isSent(`v${nextGrade}`)) nextGrade++;
-    const mode = (x: number, y: number, w: number, label: string, sub: string, id: ModeId, go: () => void, size = 22) => {
-      const info = modeInfo(id);
-      const colour = id === 'grades' ? theme.grade : info.colour;
+    const mode = (x: number, y: number, w: number, label: string, sub: string, id: ModeId, go: () => void, size = 22, colour = id === 'grades' ? theme.grade : modeInfo(id).colour) => {
       makeButton(this, x, y, w, 60, label, go, colour, size);
-      txt(this, x, y + 42, sub, 13, '#c9d1ee', false);
+      const subText = txt(this, x, y + 42, sub, 13, '#c9d1ee', false);
       this.helpButton(x + w / 2 - 22, y, id);
+      return subText;
     };
     mode(140, 262, 250, 'Grades', `Next up: V${nextGrade}`, 'grades', () => this.scene.start('Grades'));
-    mode(400, 262, 250, `Daily Boulder${isSent(daily.id) ? '  ✓' : ''}`, `V${daily.grade} today · best ${getBest(daily.id)}`, 'daily', () => this.play(daily), 19);
+    // One attempt a day: once it is used the button shows today's board, and a clock counts down to the next route.
+    const played = dailyUsed(daily.id);
+    const dailySub = mode(
+      400, 262, 250, `Daily Boulder${isSent(daily.id) ? '  ✓' : ''}`,
+      played ? '' : `V${daily.grade} today · one attempt`,
+      'daily', played ? () => this.scene.start('Leaderboard', { board: daily.id }) : () => this.play(daily), 19, played ? 0x8a5a3a : undefined,
+    );
+    if (played) {
+      const tick = () => {
+        if (dailyLevel().id !== daily.id) return void this.scene.restart(); // midnight came: a new route is ready
+        dailySub.setText(`Played · ${getBest(daily.id)} · next in ${formatCountdown(msUntilNextDay())}`);
+      };
+      tick();
+      this.time.addEvent({ delay: 1000, loop: true, callback: tick });
+    }
     const longest = getBestTime('survival');
     mode(140, 372, 250, 'Survival', longest ? `Best ${getBest('survival')} · longest ${formatTime(longest)}` : 'How long can you last?', 'survival', () => this.play(survivalLevel()));
     mode(400, 372, 250, 'Arcade', 'Weekly top 10 · your initials', 'arcade', () => this.play(arcadeLevel()));

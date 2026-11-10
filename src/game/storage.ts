@@ -14,6 +14,7 @@ interface Save {
   hints: Record<string, boolean>;
   name: string; // leaderboard name
   look: string; // climber outfit, as a look code (see looks.ts)
+  dailyStarted: string; // the Daily Boulder (its board id) this device has already started: one attempt a day
   initials: string; // the last Arcade initials typed on this device
   theme: string; // visual theme id (a preference of this device, not part of the account save)
   lookChosen: boolean; // the player picked an outfit themselves, so it is worth keeping in their account
@@ -22,11 +23,11 @@ interface Save {
 function load(): Save {
   try {
     const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
-    if (raw) return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, name: '', look: '000', theme: 'classic', initials: '', lookChosen: false, ...JSON.parse(raw) };
+    if (raw) return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, name: '', look: '000', theme: 'classic', initials: '', dailyStarted: '', lookChosen: false, ...JSON.parse(raw) };
   } catch {
     /* storage unavailable */
   }
-  return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, name: '', look: '000', theme: 'classic', initials: '', lookChosen: false };
+  return { best: {}, bestTime: {}, sent: {}, muted: false, shake: true, music: true, hints: {}, name: '', look: '000', theme: 'classic', initials: '', dailyStarted: '', lookChosen: false };
 }
 
 const changeListeners: (() => void)[] = [];
@@ -86,6 +87,12 @@ export function recordTime(id: string, seconds: number): void {
 export const getPlayerName = (): string => getAuth()?.name ?? load().name;
 export function setPlayerName(name: string): void {
   save({ ...load(), name }, false);
+}
+
+/** The Daily Boulder is one attempt a day: it counts as used from the first shot, or once there is a score for it. */
+export const dailyUsed = (id: string): boolean => load().dailyStarted === id || (load().best[id] ?? 0) > 0 || !!load().sent[id];
+export function markDailyStarted(id: string): void {
+  if (load().dailyStarted !== id) save({ ...load(), dailyStarted: id }, false);
 }
 
 export const getInitials = (): string => load().initials;

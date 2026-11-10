@@ -2,6 +2,7 @@
 // report button presses; the game scene decides what each button does.
 import Phaser from 'phaser';
 import { WIDTH } from './config';
+import { formatCountdown, msUntilNextDay } from './game/daily';
 import { formatTime } from './game/format';
 import { currentTheme } from './game/themes';
 import { makeButton, makeToggle, txt } from './ui';
@@ -30,7 +31,9 @@ export interface RoundResult {
   /** Leaderboard posting. `name` is the saved name ('' if none yet); `ask` prompts for one; `send` posts and says how it went. */
   post?: { name: string; ask: () => string | null; send: (name: string) => Promise<{ ok: boolean; message: string }>; view: () => void };
   next?: { label: string; go: () => void };
-  again: () => void;
+  /** Missing for the Daily Boulder, which gets one attempt a day. */
+  again?: () => void;
+  daily?: boolean; // the Daily Boulder: show the clock to tomorrow's route in place of "again"
   leaveLabel: string;
   leave: () => void;
 }
@@ -87,7 +90,14 @@ export function showRoundResult(scene: Phaser.Scene, r: RoundResult): Container 
     c.add(makeButton(scene, WIDTH / 2, y, 260, 54, r.next.label, r.next.go, 0x2e8b57));
     y += 70;
   }
-  c.add(makeButton(scene, WIDTH / 2, y, 260, 54, r.won ? 'Climb again' : 'Try again', r.again));
+  if (r.again) c.add(makeButton(scene, WIDTH / 2, y, 260, 54, r.won ? 'Climb again' : 'Try again', r.again));
+  else if (r.daily) {
+    const clock = txt(scene, WIDTH / 2, y + 4, '', 19, '#ffd166');
+    const tick = () => clock.active && clock.setText(`Next Daily Boulder in ${formatCountdown(msUntilNextDay())}`);
+    tick();
+    scene.time.addEvent({ delay: 1000, loop: true, callback: tick });
+    c.add(clock);
+  }
   c.add(makeButton(scene, WIDTH / 2, y + 70, 260, 54, r.leaveLabel, r.leave, 0x59627f));
   return c;
 }
@@ -142,7 +152,9 @@ export function showLeaveQuestion(scene: Phaser.Scene, stay: () => void, leave: 
 
 export interface PauseMenu {
   resume: () => void;
-  restart: () => void;
+  /** Missing when a restart isn't allowed (the Daily Boulder's one attempt has begun). */
+  restart?: () => void;
+  note?: string; // a line under the buttons
   leaveLabel: string;
   leave: () => void;
   soundLabel: () => string;
@@ -157,11 +169,13 @@ export function showPauseMenu(scene: Phaser.Scene, m: PauseMenu): Container {
   const c = curtain(scene, 200, 0.75);
   c.add(txt(scene, WIDTH / 2, 150, 'PAUSED', 54, '#ffd166'));
   c.add(makeButton(scene, WIDTH / 2, 235, 280, 48, 'Resume', m.resume, 0x2e8b57));
-  c.add(makeButton(scene, WIDTH / 2, 293, 280, 48, 'Restart', m.restart, 0x2f6fdd));
+  if (m.restart) c.add(makeButton(scene, WIDTH / 2, 293, 280, 48, 'Restart', m.restart, 0x2f6fdd));
+  else c.add(makeButton(scene, WIDTH / 2, 293, 280, 48, 'Restart (not today)', () => undefined, 0x2a2f42).setAlpha(0.5));
   c.add(makeToggle(scene, WIDTH / 2, 351, 280, 48, m.soundLabel, m.toggleSound, 20).button);
   c.add(makeToggle(scene, WIDTH / 2, 409, 280, 48, m.musicLabel, m.toggleMusic, 20).button);
   c.add(makeToggle(scene, WIDTH / 2, 467, 280, 48, m.shakeLabel, m.toggleShake, 20).button);
   c.add(makeButton(scene, WIDTH / 2, 525, 280, 48, m.leaveLabel, m.leave, 0x8a3b3b));
   c.add(txt(scene, WIDTH / 2, 575, 'P or Esc to resume', 14, '#9aa6cf', false));
+  if (m.note) c.add(txt(scene, WIDTH / 2, 608, m.note, 13, '#ffd166', false).setWordWrapWidth(440));
   return c;
 }
