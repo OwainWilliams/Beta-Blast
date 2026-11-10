@@ -4,6 +4,7 @@ import { arcadeLevel } from '../game/arcade';
 import { dailyLevel, survivalLevel } from '../game/levels';
 import { CONTROLS, ModeId, modeInfo } from '../game/modes';
 import { unlockAudio } from '../game/audio';
+import { dailyUsed } from '../game/storage';
 import { makeButton, txt } from '../ui';
 
 /** A page of "how this mode works", opened from the ? beside a mode on the menu. */
@@ -45,8 +46,10 @@ export class HowToScene extends Phaser.Scene {
         return void this.scene.start('Grades');
       case 'versus':
         return void this.scene.start('Lobby');
-      case 'daily':
-        return void this.scene.start('Game', { level: dailyLevel() });
+      case 'daily': {
+        const daily = dailyLevel();
+        return void (dailyUsed(daily.id) ? this.scene.start('Leaderboard', { board: daily.id }) : this.scene.start('Game', { level: daily })); // one attempt a day
+      }
       case 'arcade':
         return void this.scene.start('Game', { level: arcadeLevel() });
       case 'survival':

@@ -94,6 +94,8 @@ You send a route when every coloured hold is gone. Any obstacles left tumble off
 
 **Modes**: endless grades (V0, V1, V2... with no top, shown 12 to a page), and a **Daily Boulder** that is the same seeded route for everyone each day. Best scores and sends are saved in local storage.
 
+**Daily Boulder is one attempt a day.** The attempt starts with your first shot, so restarting, leaving or reloading doesn't give you another (the pause menu says so). Once it's used, the menu button opens today's board instead and shows a clock counting down to the next route, which appears at your local midnight. The lock is kept on the device, and a score also locks it on your other devices if you're signed in. The API refuses a second score under the same name for a Daily board, so the first one stands. It can't stop someone clearing their browser data, or posting under a different name.
+
 **Route Setter**: build your own route (10 rows, all hold types, pump limit, bombs and mega jugs on/off, row timer off/slow/normal/fast), test it, and share it as a link or code. Anyone opening `?route=CODE` plays it straight away, or use *Play a code* in the menu.
 
 **Customise**: pick your climber's beanie, shirt and chalk bag (*Customise* in the menu). Each colour is unlocked by playing: sending grades, sending Daily Boulders, lasting in Survival, or a big score. Locked ones show how to earn them. Your climber appears next to your name on the leaderboard.
