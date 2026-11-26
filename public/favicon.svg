@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Beta Blast</title>
+  <rect width="64" height="64" rx="14" fill="#1d2230"/>
+  <rect x="1" y="1" width="62" height="62" rx="13" fill="none" stroke="#fff" stroke-opacity=".2" stroke-width="2" class="edge"/>
+  <!-- three climbing holds, each a different shape and colour: a jug, a pinch and a crimp -->
+  <circle cx="26" cy="25" r="15" fill="#a02a30"/>
+  <circle cx="26" cy="24" r="14.5" fill="#e5484d"/>
+  <ellipse cx="21" cy="17.5" rx="6" ry="3.4" fill="#fff" opacity=".4"/>
+  <polygon points="46,27 57,33.5 57,46.5 46,53 35,46.5 35,33.5" fill="#b8860b"/>
+  <polygon points="46,26 57,32.5 57,45.5 46,52 35,45.5 35,32.5" fill="#f5c518"/>
+  <polygon points="42,34 47,30.5 50,34 43,37" fill="#fff" opacity=".4"/>
+  <rect x="8" y="42" width="27" height="16" rx="8" fill="#2a5db5"/>
+  <rect x="8" y="41" width="27" height="15.5" rx="7.75" fill="#3e8ef7"/>
+  <rect x="13" y="44" width="12" height="3.2" rx="1.6" fill="#fff" opacity=".4"/>
+</svg>
